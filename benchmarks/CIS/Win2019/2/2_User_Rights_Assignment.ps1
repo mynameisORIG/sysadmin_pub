@@ -71,17 +71,35 @@ $sqlServices = Get-Service | Where-Object { $_.DisplayName -like '*SQL Server*' 
 $IIS = Get-WindowsFeature -Name Web-Server | Select-Object -ExpandProperty Installed
 $ADFS = Get-WindowsFeature -Name ADFS-Federation | Select-Object -ExpandProperty Installed
 
+function ApplyGeneralizedBenchmark([hashtable]$replace) {
+    $orderedReplace = New-Object 'System.Collections.Specialized.OrderedDictionary'
+    $replace.GetEnumerator() | ForEach-Object {
+        $orderedReplace.Add($_.Key, $_.Value)
+    }
+    foreach ($key in $orderedReplace.Keys) {
+        try {
+            Write-Host "Executing command '$key':"
+            $privName = $orderedReplace[$key]
+            $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
+            (Get-Content .\secedit.cfg) -replace $pattern, "`$1,$sid`$2"
+        } catch {
+            Write-Host "Error executing command: $_"
+        }
+        Write-Host "----------------------"
+    }
+    Write-Host 'Pushing to secedit'
+    $normal_secedit['push']
+}
+
 class RegularMS {
 
     [hashtable] $normal_secedit
-    [array] $IIS
 
-    RegularMS([hashtable]$normal_secedit, [array]$IIS){
+    RegularMS([hashtable]$normal_secedit){
         $this.normal_secedit    = $normal_secedit
-        $this.IIS               = $IIS
     }
 
-    [void] ApplyAdministratorGroupBenchmark([string]$groupName) {
+    [void] ApplyAdministratorGroupBenchmark([string]$groupName, [string[]]$SQL) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
         $replace = [ordered]@{
         '2.2.3 | replace | Access Computer Network'     = { 'Access Computer Network' };
@@ -98,7 +116,7 @@ class RegularMS {
             try {
                 Write-Host "Executing command '$key':"
                 $privName = $replace[$key]
-                if ($key -eq '2.2.32 | replace | Impersonate client ' -and $this.sqlServices.Count -gt 0){
+                if ($key -eq '2.2.32 | replace | Impersonate client ' -and $SQL.Count -gt 0){
                     Write-Host "$key needs an exception to this rule ... Skipping"
                 }
                 $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
@@ -114,69 +132,37 @@ class RegularMS {
         $replace = [ordered]@{
         '2.2.3 | replace | Access Computer Network' = {
             $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
-            (Get-Content .\secedit.cfg) -replace ("$privilegeName['Access Computer Network'] = \[.*?)(\r\n"), "`$1,$sid`$2"
-        };
-        '2.2.3 | push' = $this.normal_secedit['push'];
+            'Access Computer Network'
+        }
         }
 
         Write-Host "Adding benchmarks that are associated with the $groupName group`n"
-        foreach ($key in $replace.Keys) {
-            $command = $replace[$key]
-            try {
-                Write-Host "Executing command '$key':"
-                & $command
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($replace)
     }
 
     [void] ApplyGuestsBenchmark([string]$groupName) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
-        '2.2.21 | replace | Deny Network Access'    =   { (Get-Content .\secedit.cfg) -replace "($($privilegeName['Deny Network Logon Rights']) = \[.*?)(\r\n)", "`$1,$sid`$2" }
-        '2.2.26 | replace | Deny RDP'               =   { (Get-Content .\secedit.cfg) -replace "($($privilegeName['Deny logon RDP']) = \[.*?)(\r\n)", "`$1,$sid`$2" }
-        'push'                                      =   { $this.normal_secedit['push'] }
+        '2.2.21 | replace | Deny Network Access'    =   { 'Deny Network Logon Rights' }
+        '2.2.26 | replace | Deny RDP'               =   { 'Deny logon RDP' }
         }
 
         Write-Host "Adding benchmarks that are associated with the $groupName group`n" -ForegroundColor DarkBlue
-        foreach ($key in $replace.Keys) {
-            $command = $replace[$key]
-            try {
-                Write-Host "Executing command '$key':"
-                & $command
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($replace)
     }
 
     [void] ApplyHyperVGroupBenchmark([string]$groupName) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
         $replace = [ordered]@{
-            '2.2.18 | replace | Symbolic links' = {
-                (Get-Content .\secedit.cfg) -replace "($privilegeName['Symbolic links'] = \[.*?)(\r\n)", "`$1,$sid`$2"
-            }
-            'push' = $this.normal_secedit['push'];
+            '2.2.18 | replace | Symbolic links' = { 'Symbolic links' }
         }
 
         Write-Host "Adding benchmarks that are associated with the $groupName group`n"
-        foreach ($key in $replace.Keys) {
-            $command = $replace[$key]
-            try {
-                Write-Host "Executing command '$key':"
-                & $command
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($replace)
     }
 
-    [void] ApplyIIS_IUSRSGroupBenchmarks([string]$groupName) {
+    [void] ApplyIIS_IUSRSGroupBenchmarks([string]$groupName, [string[]]$SQL, [string]$MIIS) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
@@ -188,11 +174,11 @@ class RegularMS {
             try {
                 Write-Host "Executing command '$key':"
                 $privName = $replace[$key]
-                if ($key -eq '2.2.32 | replace | Impersonate client ' -and $this.sqlServices.Count -gt 0){
+                if ($key -eq '2.2.32 | replace | Impersonate client ' -and $SQL.Count -gt 0){
                     Write-Host "$key needs an exception to this rule ... Skipping"
                 }
                 $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
-                if ($key -eq '2.2.32 | replace | Impersonate client ' -and $this.IIS -eq 'True'){
+                if ($key -eq '2.2.32 | replace | Impersonate client ' -and $MIIS -eq 'True'){
                     (Get-Content .\secedit.cfg) -replace $pattern, "`$1,$sid`$2"
                 } else {
                     Write-Output 'A Web Server is not installed ... Not Applicable'
@@ -205,8 +191,7 @@ class RegularMS {
         }
     }
 
-
-    [void] ApplyLocalAccountBenchmark([string]$groupName) {
+    [void] ApplyLocalAccountBenchmark([string]$groupName, [string[]]$SQL) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
         $replace = [ordered]@{
             '2.2.18 | replace | Symbolic links'         =   { 'Symbolic links' }
@@ -221,7 +206,7 @@ class RegularMS {
             try {
                 Write-Host "Executing command '$key':"
                 $privName = $replace[$key]
-                if ($key -eq '2.2.32 | replace | Impersonate client ' -and $this.sqlServices.Count -gt 0){
+                if ($key -eq '2.2.32 | replace | Impersonate client ' -and $SQL.Count -gt 0){
                     Write-Host "$key needs an exception to this rule ... Skipping"
                 }
                 $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
@@ -233,7 +218,7 @@ class RegularMS {
         }
     }
 
-    [void] ApplyNetworkServiceGroupBenchmarks([string]$groupName) {
+    [void] ApplyNetworkServiceGroupBenchmarks([string]$groupName, [string[]]$SQL) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
@@ -245,7 +230,7 @@ class RegularMS {
             try {
                 Write-Host "Executing command '$key':"
                 $privName = $replace[$key]
-                if ($key -eq '2.2.32 | replace | Impersonate client ' -and $this.sqlServices.Count -gt 0){
+                if ($key -eq '2.2.32 | replace | Impersonate client ' -and $SQL.Count -gt 0){
                     Write-Host "$key needs an exception to this rule ... Skipping"
                 }
                 $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
@@ -260,46 +245,23 @@ class RegularMS {
     [void] ApplyNoOneGroupBenchmarks([string]$groupName) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
         $policies = [ordered]@{
-        '2.2.28 | replace | Enable Priv Delegation' = {
-            (Get-Content .\secedit.cfg) -replace "($privilegeName['Enable Delegate Priv'] = \[.*?)(\r\n)", "`$1,$sid`$2"
-        }
-        'push' = $this.normal_secedit['push'];
+        '2.2.28 | replace | Enable Priv Delegation' = { 'Enable Delegate Priv' }
         }
 
         Write-Host "Adding benchmarks that are associated with no one group`n" -ForegroundColor DarkBlue
-        foreach ($key in $policies.Keys) {
-            $command = $policies[$key]
-            try {
-                Write-Host "Executing command '$key':"
-                # Invoke-Expression -Command $command
-                & $command
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($policies)
     }
 
     [void] Remote_Desktop_Users([string]$groupName){
         $replace = [ordered]@{
         '2.2.3 | replace | Access Computer Network' = {
             $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
-            (Get-Content .\secedit.cfg) -replace "($privilegeName['DC remote desktop services'] = \[.*?)(\r\n)", "`$1,$sid`$2"
-        };
-        '2.2.3 | push' = $this.normal_secedit['push'];
+            'DC remote desktop services'
+        }
         }
 
         Write-Host "Adding benchmarks that are associated with the $groupName group`n"
-        foreach ($key in $replace.Keys) {
-            $command = $replace[$key]
-            try {
-                Write-Host "Executing command '$key':"
-                & $command
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($replace)
     }
 
 }
@@ -308,20 +270,15 @@ class General_benchmark {
 
     [hashtable] $normal_secedit
     [hashtable] $privilegeName
-    [array] $sqlServices
-    [array] $IIS
-    [array] $ADFS
 
-    General_benchmark([hashtable]$normal_secedit, [hashtable]$privilegeName, [array]$sqlServices, [array]$IIS, [array]$ADFS){
+    General_benchmark([hashtable]$normal_secedit, [hashtable]$privilegeName){
         $this.normal_secedit    =   $normal_secedit
-        $this.sqlServices       =   $sqlServices
-        $this.IIS               =   $IIS
-        $this.ADFS              =   $ADFS
         $this.privilegeName     =   $privilegeName
     }
 
     [void] ApplyNoOneGroupBenchmarks([string]$groupName) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
+        Write-Host "Adding benchmarks that are associated with the No One group`n" -ForegroundColor DarkBlue
         $replace = [ordered]@{
             '2.2.1 | replace | Access Credential Manager'   = { 'Access Credential Manager' }
             '2.2.4 | replace | Act OS'                      = { 'Act OS' }
@@ -329,24 +286,13 @@ class General_benchmark {
             '2.2.16 | replace | Permanent objects'          = { 'Permanent Privilege' }
             '2.2.35 | replace | lock pages memory'          = { 'Lock pages memory' }
             '2.2.39 | replace | object label'               = { 'Modify object label' }
-            'push'                                          = $this.normal_secedit['push'];
+            # 'push' = { $this.normal_secedit['push'] }
         }
-
-        Write-Host "Adding benchmarks that are associated with the No One group`n" -ForegroundColor DarkBlue
-        foreach ($key in $replace.Keys) {
-            try {
-                Write-Host "Executing command '$key':"
-                $privName = $replace[$key]
-                $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
-                (Get-Content .\secedit.cfg) -replace $pattern, "`$1,$sid`$2"
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($replace)
+        
     }
 
-    [void] ApplyAdministratorGroupBenchmark([string]$groupName) {
+    [void] ApplyAdministratorGroupBenchmark([string]$groupName, [string[]]$SQL) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
@@ -376,7 +322,7 @@ class General_benchmark {
             try {
                 Write-Host "Executing command '$key':"
                 $privName = $replace[$key]
-                if ($key -eq '2.2.15 | replace | global objects' -and $this.sqlServices.Count -gt 0){
+                if ($key -eq '2.2.15 | replace | global objects' -and $SQL.Count -gt 0){
                     Write-Host "$key is Not Applicable ... Skipping"
                 }
                 $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
@@ -397,20 +343,10 @@ class General_benchmark {
         }
 
         Write-Host "Adding benchmarks that are associated with the $groupName group`n" -ForegroundColor DarkBlue
-        foreach ($key in $replace.Keys) {
-            try {
-                $privName = $replace[$key]
-                Write-Host "Executing command '$key':"
-                $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
-                (Get-Content .\secedit.cfg) -replace $pattern, "`$1,$sid`$2"
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($replace)
     }
 
-    [void] ApplyLocalServiceGroupBenchmark([string]$groupName) {
+    [void] ApplyLocalServiceGroupBenchmark([string]$groupName, [string[]]$SQL, [string]$MIIS, [string]$ADFS) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
@@ -428,13 +364,13 @@ class General_benchmark {
             try {
                 Write-Host "Executing command '$key':"
                 $privName = $replace[$key]
-                if ($key -eq '2.2.15 | replace | global objects' -and $this.sqlServices.Count -gt 0){
+                if ($key -eq '2.2.15 | replace | global objects' -and $SQL.Count -gt 0){
                     Write-Host "$key is Not Applicable ... Skipping"
                 }
-                if ($key -eq '2.2.30 | replace | Generate security audits' -and ($this.IIS -or $this.ADFS )){
+                if ($key -eq '2.2.30 | replace | Generate security audits' -and ($MIIS -eq 'True' -or $ADFS -eq 'True' )){
                     Write-Host "$key needs an exception ... Skipping"
                 }
-                if ($key -eq '2.2.44 | replace | Replace process lvl token' -and ($this.IIS -or $this.sqlServices.Count -gt 0 )){
+                if ($key -eq '2.2.44 | replace | Replace process lvl token' -and ($MIIS -eq 'True' -or $SQL.Count -gt 0 )){
                     Write-Host "$key needs an exception ... Skipping"
                 }
                 $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
@@ -446,7 +382,7 @@ class General_benchmark {
         }
     }
 
-    [void] ApplyNetworkServiceGroupBenchmarks([string]$groupName) {
+    [void] ApplyNetworkServiceGroupBenchmarks([string]$groupName, [string[]]$SQL, [string]$MIIS, [string]$ADFS) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
@@ -462,13 +398,13 @@ class General_benchmark {
             try {
                 Write-Host "Executing command '$key':"
                 $privName = $replace[$key]
-                if ($key -eq '2.2.15 | replace | global objects' -and $this.sqlServices.Count -gt 0){
+                if ($key -eq '2.2.15 | replace | global objects' -and $SQL.Count -gt 0){
                     Write-Host "$key is Not Applicable ... Skipping"
                 }
-                if ($key -eq '2.2.30 | replace | Generate security audits' -and ($this.IIS -or $this.ADFS )){
+                if ($key -eq '2.2.30 | replace | Generate security audits' -and ($MIIS -eq 'True' -or $ADFS -eq 'True' )){
                     Write-Host "$key needs an exception ... Skipping"
                 }
-                if ($key -eq '2.2.44 | replace | Replace process lvl token' -and ($this.IIS -or $this.sqlServices.Count -gt 0 )){
+                if ($key -eq '2.2.44 | replace | Replace process lvl token' -and ($MIIS -eq 'True' -or $SQL.Count -gt 0 )){
                     Write-Host "$key needs an exception ... Skipping"
                 }
                 $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
@@ -480,7 +416,7 @@ class General_benchmark {
         }
     }
 
-    [void] ApplyNTServiceWdiServiceHostBenchmark([string]$groupName) {
+    [void] ApplyNTServiceWdiServiceHostBenchmark([string]$groupName, [string[]]$SQL) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
@@ -493,7 +429,7 @@ class General_benchmark {
             try {
                 Write-Host "Executing command '$key':"
                 $privName = $replace[$key]
-                if ($key -eq '2.2.15 | replace | global objects' -and $this.sqlServices.Count -gt 0){
+                if ($key -eq '2.2.15 | replace | global objects' -and $SQL.Count -gt 0){
                     Write-Host "$key is Not Applicable ... Skipping"
                 }
                 $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
@@ -508,47 +444,24 @@ class General_benchmark {
     [void] service_grp_benchmarks([string]$groupName) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
         $replace = [ordered]@{
-            '2.2.15 | replace | global objects' = {
-                (Get-Content .\secedit.cfg) -replace "($($this.privilegeName['global objects']) = \[.*?)(\r\n)", "`$1,$sid`$2"
-            }
-            'push' = $this.normal_secedit['push'];
-            # '2.2.6 | Remove' = $normal_secedit['remove'];
+            '2.2.15 | replace | global objects' = { 'global objects' }
         }
 
         Write-Host "Adding benchmarks that are associated with the $groupName group`n" -ForegroundColor DarkBlue
-        foreach ($key in $replace.Keys) {
-            $command = $replace[$key]
-            try {
-                Write-Host "Executing command '$key':"
-                & $command
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($replace)
     }
 
     [void] ApplyGuestsBenchmark([string]$groupName) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
-        '2.2.22 | replace | Deny logon batch job'   =   { (Get-Content .\secedit.cfg) -replace "($($privilegeName['Deny logon batch job']) = \[.*?)(\r\n)", "`$1,$sid`$2" }
-        '2.2.23 | replace | Deny logon service job'   =   { (Get-Content .\secedit.cfg) -replace "($($privilegeName['Deny Service logon']) = \[.*?)(\r\n)", "`$1,$sid`$2" }
-        '2.2.24 | replace | Deny logon locally'   =   { (Get-Content .\secedit.cfg) -replace "($($privilegeName['SeDenyInteractiveLogonRight']) = \[.*?)(\r\n)", "`$1,$sid`$2" }
-        'push'                                      =   { $this.normal_secedit['push'] }
+        '2.2.22 | replace | Deny logon batch job'   =   { 'Deny logon batch job' }
+        '2.2.23 | replace | Deny logon service job'   =   { 'Deny Service logon' }
+        '2.2.24 | replace | Deny logon locally'   =   { 'SeDenyInteractiveLogonRight' }
         }
 
         Write-Host "Adding benchmarks that are associated with the $groupName group`n" -ForegroundColor DarkBlue
-        foreach ($key in $replace.Keys) {
-            $command = $replace[$key]
-            try {
-                Write-Host "Executing command '$key':"
-                & $command
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($replace)
     }
 
     [void] ApplyWindowsManagerGroupBenchmarks([string]$groupName) {
@@ -556,20 +469,9 @@ class General_benchmark {
 
         $replace = [ordered]@{
             '2.2.33 | replace | Increase Schedule priority' = { 'Increase schedule' }
-            'push'                                          =   { $this.normal_secedit['push']; }
         }
         Write-Host "Adding benchmarks that are associated with the $groupName group`n" -ForegroundColor DarkBlue
-        foreach ($key in $replace.Keys) {
-            try {
-                Write-Host "Executing command '$key':"
-                $privName = $replace[$key]
-                $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
-                (Get-Content .\secedit.cfg) -replace $pattern, "`$1,$sid`$2"
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($replace)
     }
 }
 
@@ -582,7 +484,7 @@ class DomCon {
         $this.privilegeName = $privilegeName
     }
 
-    [void] ApplyAdministratorGroupBenchmark([string]$groupName) {
+    [void] ApplyAdministratorGroupBenchmark([string]$groupName, [string[]]$SQL) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
@@ -601,7 +503,7 @@ class DomCon {
             try {
                 Write-Host "Executing command '$key':"
                 $privName = $replace[$key]
-                if ($key -eq '2.2.31 | replace | Impersonate client ' -and $this.sqlServices.Count -gt 0){
+                if ($key -eq '2.2.31 | replace | Impersonate client ' -and $SQL.Count -gt 0){
                     Write-Host "$key needs an exception to this rule ... Skipping"
                 }
                 $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
@@ -617,45 +519,24 @@ class DomCon {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
         $replace = [ordered]@{
         '2.2.2 | replace | Access Computer Network' = { 'Access Computer Network' }
-        'push' = { $this.normal_secedit['push'] }
         }
 
         Write-Host "Adding benchmarks that are associated with the $groupName group`n" -ForegroundColor DarkBlue
-        foreach ($key in $replace.Keys) {
-            try {
-                $privName = $replace[$key]
-                Write-Host "Executing command '$key':"
-                $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
-                (Get-Content .\secedit.cfg) -replace $pattern, "`$1,$sid`$2"
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($replace)
     }
 
     [void] ENTERPRISE_DOMAIN_CONTROLLERS_benchmark([string]$groupName) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
-        '2.2.2 | replace | Access Computer Network' =   { (Get-Content .\secedit.cfg) -replace "($($this.privilegeName['Access Computer Network']) = \[.*?)(\r\n)", "`$1,$sid`$2" }
-        'push'                                      =   { $this.normal_secedit['push'] }
+        '2.2.2 | replace | Access Computer Network' =   { 'Access Computer Network' }
         }
 
         Write-Host "Adding benchmarks that are associated with the $groupName group`n" -ForegroundColor DarkBlue
-        foreach ($key in $replace.Keys) {
-            $command = $replace[$key]
-            try {
-                Write-Host "Executing command '$key':"
-                & $command
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($replace)
     }
 
-    [void] ApplyExchangeServerBenchmark([string]$groupName) {
+    [void] ApplyExchangeServerBenchmark([string]$groupName, [string[]]$SQL) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
@@ -667,7 +548,7 @@ class DomCon {
             try {
                 Write-Host "Executing command '$key':"
                 $privName = $replace[$key]
-                if ($key -eq '2.2.31 | replace | Impersonate client ' -and $this.sqlServices.Count -gt 0){
+                if ($key -eq '2.2.31 | replace | Impersonate client ' -and $SQL.Count -gt 0){
                     Write-Host "$key needs an exception to this rule ... Skipping"
                 }
                 $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
@@ -683,25 +564,15 @@ class DomCon {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
-        '2.2.20 | replace | Deny Network Access'    =   { (Get-Content .\secedit.cfg) -replace "($($this.privilegeName['Deny Network Logon Rights']) = \[.*?)(\r\n)", "`$1,$sid`$2" }
-        '2.2.25 | replace | Deny RDP'               =   { (Get-Content .\secedit.cfg) -replace "($($this.privilegeName['Deny logon RDP']) = \[.*?)(\r\n)", "`$1,$sid`$2" }
-        'push'                                      =   { $this.normal_secedit['push'] }
+        '2.2.20 | replace | Deny Network Access'    =   { 'Deny Network Logon Rights' }
+        '2.2.25 | replace | Deny RDP'               =   { 'Deny logon RDP' }
         }
 
         Write-Host "Adding benchmarks that are associated with the $groupName group`n" -ForegroundColor DarkBlue
-        foreach ($key in $replace.Keys) {
-            $command = $replace[$key]
-            try {
-                Write-Host "Executing command '$key':"
-                & $command
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($replace)
     }
 
-    [void] ApplyLocalServiceGroupBenchmark([string]$groupName) {
+    [void] ApplyLocalServiceGroupBenchmark([string]$groupName, [string[]]$SQL) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
@@ -714,7 +585,7 @@ class DomCon {
             try {
                 Write-Host "Executing command '$key':"
                 $privName = $replace[$key]
-                if ($key -eq '2.2.31 | replace | Impersonate client ' -and $this.sqlServices.Count -gt 0){
+                if ($key -eq '2.2.31 | replace | Impersonate client ' -and $SQL.Count -gt 0){
                     Write-Host "$key needs an exception to this rule ... Skipping"
                 }
                 $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
@@ -726,7 +597,7 @@ class DomCon {
         }
     }
 
-    [void] ApplyNetworkServiceGroupBenchmarks([string]$groupName) {
+    [void] ApplyNetworkServiceGroupBenchmarks([string]$groupName, [string[]]$SQL) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
         $replace = [ordered]@{
@@ -738,7 +609,7 @@ class DomCon {
             try {
                 Write-Host "Executing command '$key':"
                 $privName = $replace[$key]
-                if ($key -eq '2.2.31 | replace | Impersonate client ' -and $this.sqlServices.Count -gt 0){
+                if ($key -eq '2.2.31 | replace | Impersonate client ' -and $SQL.Count -gt 0){
                     Write-Host "$key needs an exception to this rule ... Skipping"
                 }
                 $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
@@ -753,27 +624,14 @@ class DomCon {
     [void] ApplyNoOneGroupBenchmarks([string]$groupName) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
         $policies = [ordered]@{
-        '2.2.47 | replace | Sync dir service data' = {
-            (Get-Content .\secedit.cfg) -replace "($this.privilegeName['Sync dir service data'] = \[.*?)(\r\n)", "`$1,$sid`$2"
-        }
-        'push' = $this.normal_secedit['push'];
+        '2.2.47 | replace | Sync dir service data' = { 'Sync dir service data' }
         }
 
         Write-Host "Adding benchmarks that are associated with no one group`n" -ForegroundColor DarkBlue
-        foreach ($key in $policies.Keys) {
-            $command = $policies[$key]
-            try {
-                Write-Host "Executing command '$key':"
-                # Invoke-Expression -Command $command
-                & $command
-            } catch {
-                Write-Host "Error executing command: $_"
-            }
-            Write-Host "----------------------"
-        }
+        ApplyGeneralizedBenchmark($policies)
     }
 
-    [void] service_grp_benchmarks([string]$groupName) {
+    [void] service_grp_benchmarks([string]$groupName, [string[]]$SQL) {
         $sid = (New-Object System.Security.Principal.NTAccount($groupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
         $replace = [ordered]@{
             '2.2.31 | replace | Impersonate client '    = { 'Priv Impersonate' }
@@ -785,7 +643,7 @@ class DomCon {
             try {
                 Write-Host "Executing command '$key':"
                 $privName = $replace[$key]
-                if ($key -eq '2.2.31 | replace | Impersonate client ' -and $this.sqlServices.Count -gt 0){
+                if ($key -eq '2.2.31 | replace | Impersonate client ' -and $SQL.Count -gt 0){
                     Write-Host "$key needs an exception to this rule ... Skipping"
                 }
                 $pattern = "($($this.privilegeName[$privName]) = \[.*?)(\r\n)"
@@ -810,47 +668,48 @@ class DomCon {
 # 7: Domain Controller
 
 function ApplyGeneralBenchmarks{
-    $General_benchmark = [General_benchmark]::new($normal_secedit,$privilegeName,$ISS,$ADFS,@())
+    $General_benchmark = [General_benchmark]::new($normal_secedit,$privilegeName)
     Write-Output 'General benchmarks'`n
     $General_benchmark.ApplyNoOneGroupBenchmarks($group[7])
-    $General_benchmark.ApplyAdministratorGroupBenchmark($group[0])
+    $General_benchmark.ApplyAdministratorGroupBenchmark($group[0],$sqlServices)
     $General_benchmark.Authenticated_Users_grp_benchmark($group[1])
-    $General_benchmark.ApplyLocalServiceGroupBenchmark($group[9])
-    $General_benchmark.ApplyNetworkServiceGroupBenchmarks($group[6])
+    $General_benchmark.ApplyLocalServiceGroupBenchmark($group[9],$sqlServices, $IIS, $ADFS)
+    $General_benchmark.ApplyNetworkServiceGroupBenchmarks($group[6], $sqlServices, $IIS, $ADFS)
     $General_benchmark.service_grp_benchmarks($group[11])
     $General_benchmark.ApplyWindowsManagerGroupBenchmarks($group[12])
-    $General_benchmark.ApplyNTServiceWdiServiceHostBenchmark($group[10])
+    $General_benchmark.ApplyNTServiceWdiServiceHostBenchmark($group[10],$sqlServices)
 }
 
 function ApplyDomainControllerBenchmarks{
     $DomCon = [DomCon]::new($normal_secedit, $privilegeName)
     Write-Output 'DC benchmarks'`n
-    $DomCon.ApplyAdministratorGroupBenchmark($group[0])
+    $DomCon.ApplyAdministratorGroupBenchmark($group[0],$sqlServices)
     $DomCon.ENTERPRISE_DOMAIN_CONTROLLERS_benchmark($group[13])
     $DomCon.Authenticated_Users_benchmark($group[1])
     $DomCon.ApplyGuestsBenchmark($group[2])
     $DomCon.ApplyNoOneGroupBenchmarks($group[7])
-    $DomCon.ApplyLocalServiceGroupBenchmark($group[9])
-    $DomCon.ApplyNetworkServiceGroupBenchmarks($group[6])
-    $DomCon.service_grp_benchmarks($group[11])
+    $DomCon.ApplyLocalServiceGroupBenchmark($group[9],$sqlServices)
+    $DomCon.ApplyNetworkServiceGroupBenchmarks($group[6],$sqlServices)
+    $DomCon.service_grp_benchmarks($group[11],$sqlServices)
     if ($ExchangeServerInstalled -eq "True") {
-        $DomCon.ApplyExchangeServerBenchmark($group[14])
+        $DomCon.ApplyExchangeServerBenchmark($group[14],$sqlServices)
     }
 }
 
 function ApplyRegularMSBenchmarks{
-    $RegularMS = [RegularMS]::new($normal_secedit, $ISS)
-    $RegularMS.ApplyAdministratorGroupBenchmark($group[0])
+    $RegularMS = [RegularMS]::new($normal_secedit)
+    Write-Output 'RegularMS benchmarks'`n
+    $RegularMS.ApplyAdministratorGroupBenchmark($group[0],$sqlServices)
     $RegularMS.Authenticated_Users_benchmark($group[1])
     $RegularMS.Remote_Desktop_Users($group[8])
     if ($hyperVInstalled) {
         $RegularMS.ApplyHyperVGroupBenchmark($group[3])
     }
-    $RegularMS.ApplyLocalAccountBenchmark($group[5])
+    $RegularMS.ApplyLocalAccountBenchmark($group[5],$sqlServices)
     $RegularMS.ApplyGuestsBenchmark($group[2])
     $RegularMS.ApplyNoOneGroupBenchmarks($group[7])
-    $RegularMS.ApplyIIS_IUSRSGroupBenchmarks($group[4])
-    $RegularMS.ApplyNetworkServiceGroupBenchmarks($group[6])
+    $RegularMS.ApplyIIS_IUSRSGroupBenchmarks($group[4],$sqlServices, $ISS)
+    $RegularMS.ApplyNetworkServiceGroupBenchmarks($group[6],$sqlServices)
 }
 
 function main{
