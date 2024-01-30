@@ -1,0 +1,105 @@
+# these are using tmpfs and can be easily added
+
+- name: create /tmp partition
+  become: true
+  hosts: rhel
+  vars:
+    file:
+      - /tmp
+      - dev/shm
+      - /var
+      - /var/tmp
+      - /var/log
+      - /var/log/audit
+      - /home
+  tasks:
+# these partitions can be added after a OS install  
+
+# 1.1.2.1 create /tmp is a separate partion
+    - name: add "{{ file[0] }}" to /etc/fstab
+      mount:
+        fstype: tmpfs
+        src: tmpfs
+        path: "{{ file[0] }}"
+        opts: defaults,rw,nosuid,nodev,noexec,relatime,seclabel,size=2G
+        state: present
+      
+    - name: restart systemd daemon
+      systemd:
+              daemon_reload: true
+# 1.1.8 configure /dev/shm
+    - name: add "{{ file[1] }}" to /etc/fstab
+      mount:
+        fstype: tmpfs
+        src: tmpfs
+        path: "{{ file[1] }}"
+        opts: defaults,rw,nosuid,nodev,noexec,relatime,seclabel
+        state: present
+      
+    - name: restart systemd daemon
+      systemd:
+              daemon_reload: true
+
+    # these can not be added after an OS install. 
+    # If you have already installed the OS, either comment these out if you missed installing these devices or reinstall the Os with the devices.
+    # If running these without the partition, it will cause the OS to go into emergency mode.
+    # To fix you will need to go into /etc/fstab and remove the partition
+
+    - name: adding "{{ file[2] }}" to /etc/fstab
+     mount:
+       fstype: ext4
+       src: /dev/sda     
+       path: "{{ file[2] }}"
+       opts: defaults,rw,nosuid,nodev,noexec,relatime,seclabel,data=ordered
+       state: present
+
+   - name: restart systemd daemon
+     systemd:
+             daemon_reload: true 
+
+   - name: adding "{{ file[3] }}" to /etc/fstab
+     mount:
+       fstype: ext4
+       src: /dev/sda     
+       path: "{{ file[3] }}"
+       opts: defaults,rw,nosuid,nodev,noexec,relatime,seclabel,data=ordered
+       state: present
+
+   - name: restart systemd daemon
+     systemd:
+             daemon_reload: true
+
+  - name: adding "{{ file[4] }}" to /etc/fstab
+     mount:
+       fstype: ext4
+       src: /dev/sda     
+       path: "{{ file[4] }}"
+       opts: defaults,rw,nosuid,nodev,noexec,relatime,seclabel,data=ordered
+       state: present
+
+   - name: restart systemd daemon
+     systemd:
+             daemon_reload: true
+  - name: adding "{{ file[5] }}" to /etc/fstab
+     mount:
+       fstype: ext4
+       src: /dev/sda     
+       path: "{{ file[5] }}"
+       opts: defaults,rw,nosuid,nodev,noexec,relatime,seclabel,data=ordered
+       state: present
+
+   - name: restart systemd daemon
+     systemd:
+             daemon_reload: true
+  
+   name: add "{{ file[6] }}" to /etc/fstab
+      mount:
+        fstype: ext4
+        src: /dev/sda
+        path: "{{ file[6] }}"
+        opts: defaults,rw,nosuid,usrquota, grpquota nodev,relatime
+        state: present
+      
+    - name: restart systemd daemon
+      systemd:
+              daemon_reload: true

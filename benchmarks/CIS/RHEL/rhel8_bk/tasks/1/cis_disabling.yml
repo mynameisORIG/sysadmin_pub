@@ -1,0 +1,20 @@
+- name: disable services
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  tasks:
+    
+    - name: disable autofs if exists
+      systemd:
+        service: " {{ services[1] }}"
+        enabled: no
+        state: stopped
+      register: autofs_stop
+      failed_when: not "autofs_stop is failed and 'Could not find the request service' not in autofs_stop.msg"
+      #success_when: "autofs_stop is failed and 'Could not find the request service' not in autofs_stop.msg"
+    
+    - debug:
+        msg: "autofs is either disabled or stopped"
+
+        

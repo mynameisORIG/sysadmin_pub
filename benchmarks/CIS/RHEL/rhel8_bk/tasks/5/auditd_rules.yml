@@ -1,0 +1,105 @@
+- name: "5.2.3.x Auditd Rules "
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  vars:
+    file: 
+      /etc/audit/auditd.conf
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+
+    - name: "5.2.3.1 | Ensure changes to system administration scope (sudoers) is collected"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.2 | Ensure actions as another user are always logged"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.3 | Ensure events that modify the sudo log file are collected"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.4 | Ensure events that modify date and time information are collected"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.5 | Ensure events that modify the system's network environment are collected"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.6 | Ensure use of privileged commands is collected"
+      block:
+        - name: "5.2.3.6 | Ensure use of privileged commands is collected"
+          shell: for i in  $(df | grep '^/dev' | awk '{ print $NF }'); do find $i -xdev -type f -perm /6000 2>/dev/null; done
+          changed_when: false
+          failed_when: false
+          check_mode: false
+          register: priv_procs
+
+        - name: "5.2.3.6 | Ensure use of privileged commands is collected"
+          set_fact:
+            update_audit_template: true
+          notify: update auditd
+
+    - name: "5.2.3.7 | Ensure unsuccessful unauthorized file access attempts are collected"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.8 | Ensure events that modify user/group information are collected"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.9 | Ensure discretionary access control permission modification events are collected"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.10 | Ensure successful file system mounts are collected"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.11 | Ensure session initiation information is collected"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.12 | Ensure login and logout events are collected"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.13 | Ensure file deletion events by users are collected"
+      set_fact:
+        update_audit_template: true
+      
+    - name: "5.2.3.14 | Ensure events that modify the system's Mandatory Access Controls are collected"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.15 | Ensure successful and unsuccessful attempts to use the chcon command are recorded"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.16 | Ensure successful and unsuccessful attempts to use the setfacl command are recorded"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.17 | Ensure successful and unsuccessful attempts to use the chacl command are recorded"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.18 | Ensure successful and unsuccessful attempts to use the usermod command are recorded"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.19 | Ensure kernel module loading and unloading is collected"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.20 | Ensure the audit configuration is immutable"
+      set_fact:
+        update_audit_template: true
+
+    - name: "5.2.3.21 | Ensure the running and on disk configuration is the same"
+      set_fact:
+        update_audit_template: true

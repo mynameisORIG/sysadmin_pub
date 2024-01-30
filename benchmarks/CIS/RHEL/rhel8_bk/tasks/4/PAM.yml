@@ -1,0 +1,181 @@
+---
+- name: "4.5 | Configure PAM"
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  vars:
+    file:
+      - /etc/pam.d/password-auth
+      - /etc/pam.d/system-auth
+      - /etc/security/pwquality.conf
+      - /etc/security/faillock.conf
+      - /etc/security/pwquality.conf.d/UNC.conf
+      - /etc/security/pwhistory.conf
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+    - name: "4.4.3.1.1| 4.4.3.1.2 | Ensure system accounts are secured | pre RHEL8.2"
+      block:
+        - name: "4.4.3.1.1| 4.4.3.1.2 | Ensure lockout for failed password attempts is configured | pre RHEL8.2 | Add deny count and unlock time for preauth"
+          lineinfile:
+            path: "{{ item }}"
+            state: present
+            regexp: '^auth\s*required\s*pam_faillock.so preauth'
+            line: "auth required pam_faillock.so preauth silent deny={{ pam_faillock.attempts }}{{ (pam_faillock.fail_for_root) | ternary(' even_deny_root ',' ') }}unlock_time={{ pam_faillock.unlock_time }}"
+            insertafter: '^#?auth ?'
+          with_items:
+            - "{{ file[1] }}"
+            - "{{ file[0] }}"
+          when: ansible_distribution_version <= "8.1"
+
+        - name: "4.4.3.1.1| 4.4.3.1.2 | Ensure lockout for failed password attempts is configured | pre RHEL8.2 | Add deny count and unlock times for authfail"
+          lineinfile:
+            path: "{{ item }}"
+            state: present
+            regexp: '^auth\s*required\s*pam_faillock.so authfail'
+            line: "auth required pam_faillock.so authfail deny={{ pam_faillock.attempts }}{{ (pam_faillock.fail_for_root) | ternary(' even_deny_root ',' ') }}unlock_time={{ pam_faillock.unlock_time }}"
+            insertafter: '^#?auth ?'
+          with_items:
+            - "{{ file[1] }}"
+            - "{{ file[0] }}"
+          when: ansible_distribution_version <= "8.1"
+
+        - name: "4.4.3.1.1| 4.4.3.1.2 | Ensure system accounts are secured | RHEL8.2+ "
+          lineinfile:
+            path: "{{ file[3] }}"
+            state: present
+            regexp: "{{ item.regexp }}"
+            line: "{{ item.line }}"
+          with_items:
+            - { regexp: '^\s*deny\s*=\s*[1-5]\b', line: 'deny = 5' } #4.4.3.1.1
+            - { regexp: '^\s*unlock_time\s*=\s*(0|9[0-9][0-9]|[1-9][0-9][0-9][0-9]+)\b', line: 'unlock_time = 900' } # 4.4.3.1.2
+          when: ansible_distribution_version >= "8.2"
+
+    - name: "4.4.3.1.3 | Ensure password failed attempt lockout includes root account"
+      block:
+        - name: "4.4.3.1.3 | password-auth"
+          lineinfile:
+            path: "{{ file[0] }}"
+            regexp: '^(auth\s+required\s+pam_faillock\.so\s+)'
+            line: 'auth required pam_faillock.so preauth silent deny=3 unlock_time=900 fail_interval=900 even_deny_root'
+            state: present
+
+        - name: "4.4.3.1.3 | system-auth"
+          lineinfile:
+            path: "{{ file[1] }}"
+            regexp: '^(auth\s+required\s+pam_faillock\.so\s+)'
+            line: 'auth required pam_faillock.so preauth silent deny=3 unlock_time=900 fail_interval=900 even_deny_root'
+            state: present
+
+    - name: "4.4.X.X.X | /etc/security/pwquality.conf"
+      block:
+        - name: create UNC.conf if it doesn't exist
+          file:
+            path: "{{ file[4] }}"
+            state: touch
+
+        - name: "4.4.3.2.1 | 4.4.3.2.2 | 4.4.3.2.3| 4.4.3.2.4| 4.4.3.2.5| 4.4.3.2.6| 4.4.3.2.7| "
+          lineinfile:
+            path: "{{ file[4] }}"
+            regexp: "{{ item.regexp }}"
+            line: "{{ item.line }}"
+          with_items:
+            - { name: '4.4.3.2.1 | Ensure password number of changed characters is configured' , regexp: '^difox', line: 'difox = 2'}
+            - { name: '4.4.3.2.2 | Ensure password length is configured', regexp: '^minlen', line: 'minlen = {{pam_password.minlen }}'}
+            - { name: '4.4.3.2.3 | Ensure password complexity is configured' , regexp: '^minclass', line: 'minclass = 4'}
+            - { name: '4.4.3.2.3 | Ensure password complexity is configured' , regexp: '^dcredit', line: 'dcredit = -1'}
+            - { name: '4.4.3.2.3 | Ensure password complexity is configured' , regexp: '^ucredit', line: 'ucredit = -1'}
+            - { name: '4.4.3.2.3 | Ensure password complexity is configured' , regexp: '^ocredit', line: 'ocredit = -1'}
+            - { name: '4.4.3.2.3 | Ensure password complexity is configured' , regexp: '^lcredit', line: 'lcredit = -1'}
+            - { name: '4.4.3.2.4 | Ensure password same consecutive characters is configured', regexp: '^maxrepeat', line: 'maxrepeat = 3' }
+            - { name: '4.4.3.2.5 | Ensure password maximum sequential characters is configured', regexp: '^maxsequence', line: 'maxsequence = 3'}
+            - { name: '4.4.3.2.6 | Ensure password dictionary check is enabled', regexp: '^dictcheck', line: 'dictcheck = 1'}
+            - { name: '4.4.3.2.7 | Ensure password quality is enforced for the root user', regexp: '^denforce_for_root', line: 'enforce_for_root'}
+            
+    - name: "4.4.X.X.X | pwhistory.conf"
+      block:
+        - name: "4.4.3.3.1 | 4.4.3.3.2"
+          lineinfile:
+            path: "{{ file[5] }}"
+            regexp: "{{ item.regexp }}"
+            line: "{{ item.line }}"
+          with_items:
+            - { name: '4.4.3.3.1 | Ensure password history remember is configured', regexp: '^remember', line: 'remember = 24'}
+            - { name: '4.4.3.3.2 | Ensure password history is enforced for the root user', regexp: '^denforce_for_root', line: 'enforce_for_root'}
+
+    - name: "4.4.X.X.X | system-auth"
+      block:
+        - name: "4.4.3.3.3| 4.4.3.4.1"
+          lineinfile:
+            path: "{{ file[1]}}"
+            regexp: "{{ item.regexp }}"
+            line: "{{ item.line }}"
+          with_items:
+            - { name: '4.4.3.3.3 | Ensure pam_pwhistory includes use_authtok', regexp: '^password\s*required\s*pam_pwhistory\.so', line: 'password required pam_pwhistory.so use_authtok'}
+            - { name: '4.4.3.4.1 Ensure pam_unix does not include nullok', regexp: '^auth\s*sufficient\s*pam_unix\.so', line: 'auth sufficient pam_unix.so '}
+            - { name: '4.4.3.4.1 Ensure pam_unix does not include nullok', regexp: '^account\s*required\s*pam_unix\.so', line: 'account required pam_unix.so '}
+            - { name: '4.4.3.4.1 | 4.4.3.4.2| 4.4.3.4.3 | 4.4.3.4.4 | Ensure pam_unix does not include nullok', regexp: '^password\s*sufficient\s*pam_unix\.so', line: 'pam_unix.so sha512 shadow try_first_pass use_authtok remember={{ rhel8cis_pam_faillock.remember }}'}
+            - { name: '4.4.3.4.1 Ensure pam_unix does not include nullok', regexp: '^session\s*required\s*pam_unix\.so', line: 'session required pam_unix.so '}
+
+    - name: "4.4.X.X.X | password-auth"
+      block:
+        - name: "4.4.3.3.3 | 4.4.3.4.1 "
+          lineinfile:
+            path: "{{ file[0] }}"
+            regexp: "{{ item.regexp }}"
+            line: "{{ item.line }}"
+          with_items:
+            - { name: '4.4.3.3.3 | Ensure pam_pwhistory includes use_authtok', regexp: '^password\s*required\s*pam_pwhistory\.so', line: 'password required pam_pwhistory.so use_authtok'}
+            - { name: '4.4.3.4.1 Ensure pam_unix does not include nullok', regexp: '^auth\s*sufficient\s*pam_unix\.so', line: 'auth sufficient pam_unix.so '}
+            - { name: '4.4.3.4.1 Ensure pam_unix does not include nullok', regexp: '^account\s*required\s*pam_unix\.so', line: 'account required pam_unix.so '}
+            - { name: '4.4.3.4.1| 4.4.3.4.2 | 4.4.3.4.3 | 4.4.3.4.4 | Ensure pam_unix does not include nullok', regexp: '^password\s*sufficient\s*pam_unix\.so', line: 'pam_unix.so sha512 shadow try_first_pass use_authtok remember={{ rhel8cis_pam_faillock.remember }}'}
+            - { name: '4.4.3.4.1 Ensure pam_unix does not include nullok', regexp: '^session\s*required\s*pam_unix\.so', line: 'session required pam_unix.so '}
+
+    - name: "4.4.3.2.3 | Ensure password creation requirements are configured"
+      block:
+        - name: "4.4.3.2.3 | Ensure password creation requirements are configured | Set pwquality config settings"
+          lineinfile:
+            path: "{{ file[2] }}"
+            regexp: "{{ item.regexp }}"
+            line: "{{ item.line }}"
+          with_items:
+            - { regexp: '^minlen', line: 'minlen = {{ pam_password.minlen }}' } # maybe go away
+            - { regexp: '^minclass', line: 'minclass = {{ pam_password.minclass }}' } # maybe go away
+
+        - name: "4.4.3.2.3 | Ensure password creation requirements are configured | Set system-auth and password-auth retry settings"
+          lineinfile:
+            path: "{{ item }}"
+            regexp: '^password\s*requisite\s*pam_pwquality.so'
+            line: "password requisite pam_pwquality.so try_first_pass local_users_only enforce_for_root retry=3"
+            insertbefore: '^#?password ?'
+          with_items:
+            - "{{ file[1] }}"
+            - "{{ file[0] }}"
+
+    - name: "4.4.3.3.1 | Ensure password history remember is configured"
+      lineinfile:
+        path: "{{ file[1] }}"
+        state: present
+        line: "password requisite pam_pwhistory.so try_first_pass local_users_only enforce_for_root retry=3 remember={{ pam_faillock.remember }}"
+        insertafter: '^password\s*requisite\s*pam_pwquality.so'
+
+    - name: "4.5.1.1 | Ensure password hashing algorithm is SHA-512"
+      block:
+        - name: "5.5.4 | Ensure password hashing algorithm is SHA-512 | libuser.conf"
+          replace:
+              path: "{{ item.path }}"
+              regexp: "{{ item.regexp }}"
+              replace: "{{ item.replace }}"
+          with_items:
+            - { path: /etc/security/pwquality.conf, regexp: '^hash_algorithm\s*=\s*.*$', replace: 'hash_algorithm = sha512' }
+            - { path: /etc/login.defs, regexp: '^ENCRYPT_METHOD.*', replace: 'ENCRYPT_METHOD SHA512' }
+
+        - name: "5.5.4 | Ensure password reuse is limited | pwhistory"
+          replace:
+            path: "{{ item }}"
+            regexp: '^password\s*sufficient\s*pam_unix.so.*$'
+            replace: 'password sufficient pam_unix.so sha512 shadow try_first_pass use_authtok remember={{ rhel8cis_pam_faillock.remember }}'
+          with_items:
+            - "{{ file[0] }}"
+            - "{{ file[1] }}"

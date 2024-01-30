@@ -1,0 +1,91 @@
+- name: "4.3 | Configure Privilege escalation"
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  vars:
+    file:
+      - /etc/sudoers
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+
+    - name: "5.3.1 | Ensure sudo is installed"
+      package:
+        name: "{{ packages_present[7] }}"
+        state: present
+
+    - name: "5.3.2 | Ensure sudo commands use pty"
+      lineinfile:
+        path: "{{ file[0] }}"
+        line: "Defaults    use_pty"
+
+    - name: "5.3.3 | Ensure sudo log file exists"
+      lineinfile:
+        path: "{{ file[0] }}"
+        regexp: '^Defaults\s+logfile='
+        line: 'Defaults logfile={{ sudolog_location }}'
+
+    - name: "5.3.4 | Ensure users must provide password for escalation"
+      replace:
+        path: "{{ item }}"
+        regexp: '^([^#|{% if system_is_ec2 %}ec2-user{% endif %}].*)NOPASSWD(.*)'
+        replace: '\1PASSWD\2'
+      with_items:
+        - "{{ sudoers_files.stdout_lines }}"
+
+    - name: "5.3.5 | Ensure re-authentication for privilege escalation is not disabled globally"
+      replace:
+        path: "{{ item }}"
+        regexp: '^([^#].*)!authenticate(.*)'
+        replace: '\1authenticate\2'
+      with_items:
+        - "{{ sudoers_files.stdout_lines }}"
+
+    - name: "5.3.6 | Ensure sudo authentication timeout is configured correctly"
+      block:
+        - name: "5.3.6 | Ensure sudo authentication timeout is configured correctly | Get files with timeout set"
+          shell: grep -is 'timestamp_timeout' /etc/sudoers /etc/sudoers.d/* | cut -d":" -f1 | uniq | sort
+          changed_when: false
+          failed_when: false
+          register: timeout_files
+
+        - name: "5.3.6 | Ensure sudo authentication timeout is configured correctly | Set value if no results"
+          lineinfile:
+            path: "{{ file[0] }}"
+            regexp: 'Defaults timestamp_timeout='
+            line: "Defaults timestamp_timeout={{ rhel8cis_sudo_timestamp_timeout }}"
+            validate: '/usr/sbin/visudo -cf %s'
+          when: timeout_files.stdout | length == 0
+
+        - name: "5.3.6 | Ensure sudo authentication timeout is configured correctly | Set value if has results"
+          replace:
+            path: "{{ item }}"
+            regexp: 'timestamp_timeout=(\d+)'
+            replace: "timestamp_timeout={{ rhel8cis_sudo_timestamp_timeout }}"
+            validate: '/usr/sbin/visudo -cf %s'
+          with_items:
+            - "{{ timeout_files.stdout_lines }}"
+          when: timeout_files.stdout | length > 0
+
+      #  commenting this section out due to people using su to test certain users
+      # - name: "5.3.7 | Ensure access to the su command is restricted"
+      #   block:
+      #     - name: "5.3.7 | Ensure access to the su command is restricted | Ensure sugroup exists"
+      #       group:
+      #         name: "{{ sugroup }}"
+      #         state: present
+      #       register: rhel8cis_5_3_7_sugroup
+
+      #     - name: "5.3.7 | PATCH | Ensure access to the su command is restricted | remove users from group"
+      #       lineinfile:
+      #         path: /etc/group
+      #         regexp: '^{{ sugroup }}(:.:.*:).*$'
+      #         line: '{{ sugroup }}\g<1>'
+      #         backrefs: true
+
+      #     - name: "5.3.7 | PATCH | Ensure access to the su command is restricted | Setting pam_wheel to use_uid"
+      #       lineinfile:
+      #         path: /etc/pam.d/su
+      #         regexp: '^(#)?auth\s+required\s+pam_wheel\.so'
+      #         line: 'auth           required        pam_wheel.so use_uid group={{ rhel8cis_sugroup }}'

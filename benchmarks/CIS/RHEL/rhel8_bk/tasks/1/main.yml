@@ -1,0 +1,30 @@
+- name: "1 Section modprobed"
+  import_tasks: cis_modprobed.yml
+
+- name: "1.1 Filesystem"
+  import_tasks: cis_filesystem.yml
+
+- name: "1.1.2.1 1.1.3.1, 1.1.4.1, 1.1.5.1, 1.1.6.1, 1.1.7.1, and 1.1.8"
+  import_tasks: cis_partitions.yml
+
+- name: "1.4"
+  import_tasks: cis_boot_settings.yml
+
+- name: "1.5 Additional Process Hardening"
+import_tasks: cis_additional_hardening.yml
+
+- name: "1.6 Mandatory Access Control"
+import_tasks: cis_selinux_config.yml
+
+- name: "1.7 Command Line Warniing Banners"
+import_tasks: cis_CLI_Warning_banners.yml
+
+# If Gnome is needed, feel free to comment out this section.
+- name: "1.8 GNOME Display Manager"
+import_tasks: cis_Gnome_Display_Manager.yml
+
+- name: "1.9 System Updates"
+import_tasks: cis_system_up_to_date.yml
+
+- name: "1.10 Crypto Policies"
+import_tasks: cis_crypto_policy.yml

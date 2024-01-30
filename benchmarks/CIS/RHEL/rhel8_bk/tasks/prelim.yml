@@ -1,0 +1,38 @@
+---
+# Preliminary tasks that should always be run
+
+- name: "prerequisite | Gather the package facts before prelim"
+  package_facts:
+    manager: auto
+
+# List users in order to look files inside each home directory
+- name: "prerequisite | List users accounts"
+  shell: "awk -F: '{print $1}' /etc/passwd"
+  changed_when: false
+  check_mode: false
+  register: users
+
+- name: "prerequisite | Gather interactive user ID min and max"
+  block:
+    - name: "prerequisite  | Gather interactive user ID min"
+      shell: grep ^UID_MIN /etc/login.defs | awk '{print $2}'
+      changed_when: false
+      failed_when: false
+      register: rhel8cis_min_uid
+
+    - name: "prerequisite | Gather interactive user ID max"
+      shell: grep ^UID_MAX /etc/login.defs | awk '{print $2}'
+      changed_when: false
+      failed_when: false
+      register: rhel8cis_max_uid
+
+    - name: "prerequisite  | Setting the fact"
+      set_fact:
+        uid_interactive_uid_start: "{{ rhel8cis_min_uid.stdout | string }}"
+        uid_interactive_uid_stop: "{{ rhel8cis_max_uid.stdout | string }}"
+
+- name: "prerequisite | Gather UID 0 accounts other than root"
+  shell: "cat /etc/passwd | awk -F: '($3 == 0 && $1 != \"root\") {i++;print $1 } END {exit i}'"
+  changed_when: false
+  check_mode: false
+  register: uid_zero_accounts_except_root

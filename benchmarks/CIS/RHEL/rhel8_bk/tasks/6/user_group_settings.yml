@@ -1,0 +1,367 @@
+- name: "6.2 | user groups settings"
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+
+    - name: prereq | Import prereq files
+      block:
+        - name: "prereq| Import parse etc/password"
+          import_tasks: ./parse_etc_password.yml
+
+        - name: "prereq| Import prereq"
+          import_tasks: ../prelim.yml
+
+    - name: "prerequisite | Gather accounts with empty password fields"
+      shell: "cat /etc/shadow | awk -F: '($2 == \"\" ) {j++;print $1; } END {exit j}'"
+      changed_when: false
+      check_mode: false
+      register: empty_password_accounts
+
+    - name: 6.2.1 | Ensure accounts in /etc/passwd use shadowed passwords
+      block:
+
+        - name: Check if shadowed passwords are in use
+          shell: "grep -E '^\\+:\\*|^\\+:\\!:|^\\+:\\$' /etc/passwd"
+          register: passwd_shadow_check
+          ignore_errors: yes
+
+        - name: Enforce shadowed passwords
+          lineinfile:
+            path: /etc/passwd
+            regexp: '^\\+'
+            line: '+::::::'
+          when: passwd_shadow_check.rc == 0
+      
+    - name: "6.2.2 | Ensure /etc/shadow password fields are not empty"
+      shell: passwd -l {{ item }}
+      changed_when: false
+      failed_when: false
+      with_items: "{{ empty_password_accounts.stdout_lines }}"
+  
+    - name: "6.2.3 | Ensure all groups in /etc/passwd exist in /etc/group"
+      block:
+        - name: "6.2.3 | Ensure all groups in /etc/passwd exist in /etc/group | Check /etc/passwd entries"
+          shell: pwck -r | grep 'no group' | awk '{ gsub("[:\47]",""); print $2}'
+          changed_when: false
+          failed_when: false
+          check_mode: false
+          register: passwd_gid_check
+
+        - name: "6.2.3 | AUDIT | Ensure all groups in /etc/passwd exist in /etc/group | Print warning about users with invalid GIDs missing GID entries in /etc/group"
+          debug:
+            msg: "Warning!! The following users have non-existent GIDs (Groups): {{ passwd_gid_check.stdout_lines | join (', ') }}"
+          when: passwd_gid_check.stdout | length > 0
+
+        - name: "6.2.3 | AUDIT | Ensure all groups in /etc/passwd exist in /etc/group | Warn Count"
+          import_tasks: ../warning_facts.yml
+          vars:
+            warn_control_id: '6.2.2'
+          when: passwd_gid_check.stdout | length > 0
+
+    - name: "6.2.4 | Ensure no duplicate UIDs exist"
+      block:
+        - name: "6.2.4 | Ensure no duplicate UIDs exist | Check for duplicate UIDs"
+          shell: "pwck -r | awk -F: '{if ($3 in uid) print $1 ; else uid[$3]}' /etc/passwd"
+          changed_when: false
+          failed_when: false
+          register: user_uid_check
+
+        - name: "6.2.4 | Ensure no duplicate UIDs exist | Print warning about users with duplicate UIDs"
+          debug:
+            msg: "Warning!! The following users have UIDs that are duplicates: {{ user_uid_check.stdout_lines }}"
+          when: user_uid_check.stdout | length > 0
+
+        - name: "6.2.4 | Ensure no duplicate UIDs exist | Warn Count"
+          import_tasks: ../warning_facts.yml
+          when: user_uid_check.stdout | length > 0
+
+    - name: "6.2.5 | Ensure no duplicate GIDs exist"
+      block:
+        - name: "6.2.5 | Ensure no duplicate GIDs exist | Check for duplicate GIDs"
+          shell: "pwck -r | awk -F: '{if ($3 in users) print $1 ; else users[$3]}' /etc/group"
+          changed_when: false
+          failed_when: false
+          register: user_user_check
+
+        - name: "6.2.5 | Ensure no duplicate GIDs exist | Print warning about users with duplicate GIDs"
+          debug:
+            msg: "Warning!! The following groups have duplicate GIDs: {{ user_user_check.stdout_lines }}"
+          when: user_user_check.stdout | length > 0
+
+        - name: "6.2.5 | Ensure no duplicate GIDs exist | Warn Count"
+          import_tasks: ../warning_facts.yml
+          when: user_user_check.stdout | length > 0
+
+    - name: "6.2.6 | Ensure no duplicate user names exist"
+      block:
+        - name: "6.2.6 | Ensure no duplicate user names exist | Check for duplicate User Names"
+          shell: "pwck -r | awk -F: '{if ($1 in users) print $1 ; else users[$1]}' /etc/passwd"
+          changed_when: false
+          failed_when: false
+          register: user_username_check
+
+        - name: "6.2.6 | Ensure no duplicate user names exist | Print warning about users with duplicate User Names"
+          debug:
+            msg: "Warning!! The following user names are duplicates: {{ user_username_check.stdout_lines }}"
+          when: user_username_check.stdout | length > 0
+
+        - name: "6.2.6 | Ensure no duplicate user names exist | Warn Count"
+          import_tasks: ../warning_facts.yml
+          when: user_username_check.stdout | length > 0
+
+    - name: "6.2.7 | Ensure no duplicate group names exist"
+      block:
+        - name: "6.2.7 | Ensure no duplicate group names exist | Check for duplicate group names"
+          shell: 'getent passwd | cut -d: -f1 | sort -n | uniq -d'
+          changed_when: false
+          failed_when: false
+          check_mode: false
+          register: group_group_check
+
+        - name: "6.2.7 | Ensure no duplicate group names exist | Print warning about users with duplicate group names"
+          debug:
+            msg: "Warning!! The following group names are duplicates: {{ group_group_check.stdout_lines }}"
+          when: group_group_check.stdout | length > 0
+
+        - name: "6.2.7 | Ensure no duplicate group names exist | Warn count"
+          import_tasks: ../warning_facts.yml
+          when: group_group_check.stdout | length > 0
+
+    - name: "6.2.8 | Ensure root PATH Integrity"
+      block:
+        - name: "6.2.8 | Ensure root PATH Integrity | Determine empty value"
+          shell: 'echo $PATH | grep ::'
+          changed_when: false
+          failed_when: path_colon.rc == 0
+          check_mode: false
+          register: path_colon
+
+        - name: "6.2.8 | Ensure root PATH Integrity | Determin colon end"
+          shell: 'echo $PATH | grep :$'
+          changed_when: false
+          failed_when: path_colon_end.rc == 0
+          check_mode: false
+          register: path_colon_end
+
+        - name: "6.2.8 | Ensure root PATH Integrity | Determine dot in path"
+          shell: "/bin/bash --login -c 'env | grep ^PATH=' | sed -e 's/PATH=//' -e 's/::/:/' -e 's/:$//' -e 's/:/\\n/g'"
+          changed_when: false
+          failed_when: '"." in dot_in_path.stdout_lines'
+          check_mode: false
+          register: dot_in_path
+
+        - name: "6.2.8 | Ensure root PATH Integrity | Alert on empty value, colon end, and dot in path"
+          debug:
+            msg:
+              - "The following paths have an empty value: {{ path_colon.stdout_lines }}"
+              - "The following paths have colon end: {{ path_colon_end.stdout_lines }}"
+              - "The following paths have a dot in the path: {{ dot_in_path.stdout_lines }}"
+
+        - name: "6.2.8 | Ensure root PATH Integrity | Determine rights and owner"
+          file:
+            path: '{{ item }}'
+            follow: true
+            state: directory
+            owner: root
+            mode: 'o-w,g-w'
+          with_items: "{{ dot_in_path.stdout_lines }}"    
+
+    - name: "prerequisite | Gather UID 0 accounts other than root"
+      shell: "cat /etc/passwd | awk -F: '($3 == 0 && $1 != \"root\") {i++;print $1 } END {exit i}'"
+      changed_when: false
+      check_mode: false
+      register: uid_zero_accounts_except_root
+
+    # - name: "6.2.9 | Ensure root is the only UID 0 account"
+    #   shell: passwd -l {{ item }}
+    #   changed_when: false
+    #   failed_when: false
+    #   with_items: "{{ uid_zero_accounts_except_root.stdout_lines }}"
+
+    # - name: "6.2.9 | Ensure all users' home directories exist"
+    #   block:
+    #     - name: "6.2.9 | Ensure all users' home directories exist"
+    #       stat:
+    #         path: "{{ item }}"
+    #       register: rhel08_audit
+    #       with_items: "{{ passwd | selectattr('uid', '>=', uid_interactive_uid_start | int ) | selectattr('uid', '<=', uid_interactive_uid_stop | int ) | map(attribute='dir') | list }}"
+
+    #     - name: "6.2.9 | Ensure all users' home directories exist"
+    #       shell: find -H {{ item.0 | quote }} -not -type l -perm /027
+    #       check_mode: false
+    #       changed_when: patch_audit.stdout | length > 0
+    #       register: patch_audit
+    #       when:
+    #         - ansible_check_mode
+    #         - item.1.exists
+    #       with_together:
+    #         - "{{ rhel08_audit.results | map(attribute='item') | list }}"
+    #         - "{{ rhel08_audit.results | map(attribute='stat') | list }}"
+    #       loop_control:
+    #         label: "{{ item.0 }}"
+
+    #     - name: "6.2.9 | Ensure all users' home directories exist"
+    #       file:
+    #         path: "{{ item.0 }}"
+    #         recurse: true
+    #         mode: a-st,g-w,o-rwx
+    #       register: rhel08_patch
+    #       when:
+    #         - not ansible_check_mode
+    #         - item.1.exists
+    #       with_together:
+    #         - "{{ rhel08_audit.results | map(attribute='item') | list }}"
+    #         - "{{ rhel08_audit.results | map(attribute='stat') | list }}"
+    #       loop_control:
+    #         label: "{{ item.0 }}"
+
+    #     # set default ACLs so the homedir has an effective umask of 0027
+    #     - name: "6.2.9 | Ensure all users' home directories exist"
+    #       ansible.posix.acl:
+    #         path: "{{ item.0 }}"
+    #         default: true
+    #         state: present
+    #         recursive: true
+    #         follow: "{{ follow_home_symlinks }}"
+    #         etype: "{{ item.1.etype }}"
+    #         permissions: "{{ item.1.mode }}"
+    #       when:
+    #         - not system_is_container
+    #       with_nested:
+    #         - "{{ (ansible_check_mode | ternary(patch_audit, rhel08_patch)).results |
+    #           rejectattr('skipped', 'defined') | map(attribute='item') | map('first') | list }}"
+    #         -
+    #           - etype: group
+    #             mode: rx
+    #           - etype: other
+    #             mode: '0'
+
+    # - name: "6.2.10 | Ensure users own their home directories"
+    #   file:
+    #     path: "{{ item.dir }}"
+    #     owner: "{{ item.id }}"
+    #     state: directory
+    #   with_items: "{{ passwd }}"
+    #   loop_control:
+    #     label: "{{ passwd_label }}"
+    #   when:
+    #     - item.uid >= uid_interactive_uid_start | int
+    #     - item.id != 'nobody'
+    #     - item.dir != '/dev/null'
+
+    # - name: "6.2.11 | Ensure users' home directories permissions are 750 or more restrictive"
+    #   block:
+    #     - name: "6.2.11 | Ensure users' home directories permissions are 750 or more restrictive"
+    #       stat:
+    #         path: "{{ item }}"
+    #       with_items: "{{ passwd | selectattr('uid', '>=', uid_interactive_uid_start | int) | selectattr('uid', '<=', uid_interactive_uid_stop | int) | map(attribute='dir') | list }}"
+    #       register: audit
+
+    #     - name: "6.2.11 | Ensure users' home directories permissions are 750 or more restrictive"
+    #       shell: find -H {{ item.0 | quote }} -not -type l -perm /027
+    #       check_mode: false
+    #       changed_when: patch_audit.stdout | length > 0
+    #       register: patch_audit
+    #       when:
+    #         - ansible_check_mode
+    #         - item.1.exists
+    #       with_together:
+    #         - "{{ audit.results | map(attribute='item') | list }}"
+    #         - "{{ audit.results | map(attribute='stat') | list }}"
+    #       loop_control:
+    #         label: "{{ item.0 }}"
+
+    #     - name: "6.2.11 | Ensure users' home directories permissions are 750 or more restrictive"
+    #       file:
+    #         path: "{{ item.0 }}"
+    #         recurse: true
+    #         mode: a-st,g-w,o-rwx
+    #       register: patch
+    #       when:
+    #         - not ansible_check_mode
+    #         - item.1.exists
+    #       with_together:
+    #         - "{{ audit.results | map(attribute='item') | list }}"
+    #         - "{{ audit.results | map(attribute='stat') | list }}"
+    #       loop_control:
+    #         label: "{{ item.0 }}"
+
+    #     # set default ACLs so the homedir has an effective umask of 0027
+    #     - name: "6.2.11 | Ensure users' home directories permissions are 750 or more restrictive"
+    #       ansible.posix.acl:
+    #         path: "{{ item.0 }}"
+    #         default: true
+    #         state: present
+    #         recursive: true
+    #         etype: "{{ item.1.etype }}"
+    #         permissions: "{{ item.1.mode }}"
+    #       when:
+    #         - not system_is_container
+    #       with_nested:
+    #         - "{{ (ansible_check_mode | ternary(patch_audit, patch)).results |
+    #           rejectattr('skipped', 'defined') | map(attribute='item') | map('first') | list }}"
+    #         -
+    #           - etype: group
+    #             mode: rx
+    #           - etype: other
+    #             mode: '0'
+
+    # - name: "6.2.12 | Ensure users' dot files are not group or world-writable"
+    #   block:
+    #     - name: "6.2.12 | Ensure users' dot files are not group or world-writable | Check for files"
+    #       shell: find /home/ -maxdepth 2 -name "\.*" -perm /g+w,o+w
+    #       changed_when: false
+    #       failed_when: false
+    #       register: audit
+
+    #     - name: "6.2.12 | Ensure users' dot files are not group or world-writable | Changes files if configured"
+    #       file:
+    #         path: '{{ item }}'
+    #         mode: go-w
+    #       with_items: "{{ audit.stdout_lines }}"
+    #       when:
+    #         - audit.stdout is defined
+    #         - dotperm_ansiblemanaged
+
+    # - name: "6.2.13 | Ensure users' .netrc Files are not group or world accessible"
+    #   shell: /bin/true
+    #   changed_when: false
+    #   failed_when: false
+
+    # - name: "6.2.14 | Ensure no users have .forward files"
+    #   file:
+    #     path: "~{{ item }}/.forward"
+    #     state: absent
+    #   with_items:
+    #     - "{{ users.stdout_lines }}"
+
+    # - name: "6.2.14 | Ensure no users have .forward files"
+    #   file:
+    #     path: "~{{ item }}/.forward"
+    #     state: absent
+    #   with_items:
+    #     - "{{ users.stdout_lines }}"
+
+    # - name: "6.2.16 | Ensure no users have .rhosts files"
+    #   file:
+    #     path: "~{{ item }}/.rhosts"
+    #     state: absent
+    #   with_items: "{{ users.stdout_lines }}"
+
+    - name: 6.2.10 | Ensure local interactive user home directories are configured
+      block:
+
+        - name: Check if home directory is configured for the user
+          shell: "grep -E '^username:' /etc/passwd | cut -d':' -f6"
+          register: home_directory_check
+          ignore_errors: yes
+
+        - name: Configure home directory for the user
+          user:
+            name: username
+            home: /desired/home/directory
+          when: home_directory_check.rc != 0

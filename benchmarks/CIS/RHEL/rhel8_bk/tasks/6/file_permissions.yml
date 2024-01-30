@@ -1,0 +1,234 @@
+- name: "6.1 | System File Permissions"
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  vars: 
+    file:
+      - /etc/passwd
+      - /etc/shadow
+      - /etc/group
+      - /etc/gshadow
+      - /etc/passwd-
+      - /etc/shadow-
+      - /etc/group-
+      - /etc/gshadow-
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+    - name: "6.1.2 | Ensure sticky bit is set on all world-writable directories"
+      shell: df --local -P | awk {'if (NR!=1) print $6'} | xargs -I '{}' find '{}' -xdev -type d -perm -0002 2>/dev/null | xargs chmod a+t
+      changed_when: false
+      failed_when: false
+
+    - name: "6.1.3 | 6.1.5 | 6.1.7 | 6.1.9 | Ensure permissions with files with permission levels 0644 are configured"
+      file:
+        path: "{{ item }}" 
+        owner: root
+        group: root
+        mode: 0644
+      with_items:
+        - "{{ file[0] }}"
+        - "{{ file[2] }}"
+        - "{{ file[4] }}"
+        - "{{ file[6] }}"
+
+    - name: "6.1.4 | 6.1.6 | 6.1.8 | 6.1.10 | Ensure permissions with files with permissions levels of 000 are configured"
+      file:
+        path: "{{ item }}" 
+        owner: root
+        group: root
+        mode: 0000
+      with_items:
+        - "{{ file[1] }}"
+        - "{{ file[3] }}"
+        - "{{ file[5] }}"
+        - "{{ file[7] }}"
+
+    - name: "6.1.11 | Ensure no world writable files exist"
+      block:
+        - name: "6.1.11 | Ensure no world writable files exist | Get list of world-writable files"
+          shell: df --local -P | awk {'if (NR!=1) print $6'} | xargs -I '{}' find '{}' -xdev -type f -perm -0002
+          failed_when: false
+          changed_when: false
+          register: perms_results
+
+        - name: "6.1.11 | Ensure no world writable files exist | Adjust world-writable files if they exist (Configurable)"
+          file:
+            path: '{{ item }}'
+            mode: o-w
+            state: touch
+          with_items: "{{ perms_results.stdout_lines }}"
+          when:
+            - perms_results.stdout_lines is defined
+            - no_world_write_adjust
+
+        # - name: "6.1.11 | Ensure no world writable files exist | Warn Count"
+        #   import_tasks: ../warning_facts.yml
+        #   when:
+        #     - perms_results.stdout_lines is defined
+        #     - not no_world_write_adjust
+
+    - name: "6.1.12 | Ensure no unowned files or directories exist"
+      block:
+        - name: "6.1.12 | Ensure no unowned files or directories exist | Finding all unowned files or directories"
+          shell: find "{{ item.mount }}" -xdev -nouser
+          changed_when: false
+          failed_when: false
+          check_mode: false
+          register: audit
+          with_items: "{{ ansible_mounts }}"
+          loop_control:
+            label: "{{ item.mount }}"
+          when:
+            - item['device'].startswith('/dev')
+            - not 'bind' in item['options']
+
+        - name: "6.1.12 | Ensure no unowned files or directories exist | set fact"
+          set_fact:
+            unowned_files_found: true
+          loop: "{{ audit.results }}"
+          when:
+            - item | length > 0
+            - item.stdout is defined  
+            - item.stdout | length > 0
+
+        # - name: "6.1.12 | Ensure no unowned files or directories exist | Displaying any unowned files or directories"
+        #   debug:
+        #     msg: "Warning -- missing owner on items in {{ audit | json_query('results[*].stdout_lines[*]') | flatten }}"  
+        #   when:
+        #     - unowned_files_found
+
+        # - name: "6.1.12 | Ensure no unowned files or directories exist | Warn Count"
+        #   import_tasks: ../warning_facts.yml
+        #   when: unowned_files_found
+      vars:
+        unowned_files_found: false
+
+    - name: "6.1.13 | Ensure no ungrouped files or directories exist"
+      block:
+        - name: "6.1.13 | Ensure no ungrouped files or directories exist | Finding all ungrouped files or directories"
+          shell: find "{{ item.mount }}" -xdev -nogroup
+          check_mode: false
+          failed_when: false
+          changed_when: false
+          register: audit
+          with_items: "{{ ansible_mounts }}"
+          loop_control:
+            label: "{{ item.mount }}"
+          when:
+            - item['device'].startswith('/dev')
+            - not 'bind' in item['options']
+
+        - name: "6.1.13 | Ensure no ungrouped files or directories exist | set fact"
+          set_fact:
+            ungrouped_files_found: true
+          loop: "{{ audit.results }}"
+          when:
+            - item | length > 0
+            - item.stdout is defined  
+            - item.stdout | length > 0
+
+        # - name: "6.1.13 | Ensure no ungrouped files or directories exist | Displaying all ungrouped files or directories"
+        #   ansible.builtin.debug:
+        #       msg: "Warning!! -- Missing group on items in {{ audit | json_query('results[*].stdout_lines[*]') | flatten }}"  
+        #   when: ungrouped_files_found
+
+        # - name: "6.1.13 | Ensure no ungrouped files or directories exist | Warn Count"
+        #   ansible.builtin.import_tasks: ../warning_facts.yml
+        #   when: ungrouped_files_found
+      vars:
+        ungrouped_files_found: false
+
+    - name: "6.1.14 | Audit SUID executables"
+      block:
+        - name: "6.1.14 | Audit SUID executables | Find all SUID executables"
+          shell: df {{ item.mount }} -P | awk {'if (NR!=1) print $6'} | xargs -I '{}' find '{}' -xdev -type f -perm -4000
+          failed_when: false
+          changed_when: false
+          register: suid_perms
+          with_items: "{{ ansible_mounts }}"
+          loop_control:
+            label: "{{ item.mount }}"
+
+        - name: "6.1.14 | Audit SUID executables | set fact SUID executables"
+          set_fact:
+            suid_found: true
+          loop: "{{ suid_perms.results }}"
+          when:
+            - item | length > 0
+            - item.stdout is defined  
+            - item.stdout | length > 0
+
+        # - name: "6.1.14 | Audit SUID executables |  Alert SUID executables exist"
+        #   debug:
+        #     msg: "Warning!! -- SUID set on items in {{ suid_perms | json_query('results[*].stdout_lines[*]') | flatten }}"  
+        #   when: suid_found
+
+        # - name: "6.1.14 | Audit SUID executables | Warn Count"
+        #   import_tasks: ../warning_facts.yml
+        #   when: suid_found
+      vars:
+        suid_found: false
+
+    - name: "6.1.15 | Audit SGID executables"
+      block:
+        - name: "6.1.15 | Audit SGID executables | Find all SGID executables"
+          shell: df {{ item.mount }} -P | awk {'if (NR!=1) print $6'} | xargs -I '{}' find '{}' -xdev -type f -perm -2000
+          failed_when: false
+          changed_when: false
+          register: sgid_perms
+          loop: "{{ ansible_mounts }}"
+          loop_control:
+            label: "{{ item.mount }}"
+
+        - name: "6.1.15 | Audit SGID executables | Set fact SGID executables"
+          set_fact:
+            sgid_found: true
+          loop: "{{ sgid_perms.results }}"
+          when:
+            - item | length > 0
+            - item.stdout is defined  
+            - item.stdout | length > 0
+
+        # - name: "6.1.15 | Audit SGID executables |  Alert SGID executables exist"
+        #   debug:
+        #     msg: "Warning!! -- SGID set on items in {{ sgid_perms | json_query('results[*].stdout_lines[*]') | flatten }}"  
+        #   when: sgid_found
+
+        # - name: "6.1.15 | Audit SGID executables | Warn Count"
+        #   import_tasks: ../warning_facts.yml
+        #   when: sgid_found
+      vars:
+        rhel8cis_6_1_15_guid_found: false
+
+    - name: "6.1.14 | Audit system file permissions"
+      block:
+        - name: "6.1.14 | Audit system file permissions | Audit the packages"
+          shell: rpm -Va --nomtime --nosize --nomd5 --nolinkto
+          changed_when: false
+          failed_when: false
+          register: packages_rpm
+
+        - name: "6.1.14 | Audit system file permissions | Create list and warning"
+          block:
+            - name: "6.1.14 | Audit system file permissions | Add file discrepancy list to system"
+              copy:
+                dest: "{{ rpm_audit_file }}" 
+                content: "{{ packages_rpm.stdout }}"
+                owner: root
+                group: root
+                mode: 0644
+
+            - name: "6.1.14 | Audit system file permissions | Message out alert for package descrepancies"
+              debug:
+                msg: |
+                  "Warning!! You have some package descrepancies issues.
+                    The file list can be found in {{ rpm_audit_file }}"
+              when: packages_rpm.stdout|length > 0
+
+            # - name: "6.1.14 | Audit system file permissions | Warn Count"
+            #   import_tasks: ../warning_facts.yml
+            #   vars:
+            #     warn_control_id: '6.1.1'
+            #   when: packages_rpm.stdout | length > 0

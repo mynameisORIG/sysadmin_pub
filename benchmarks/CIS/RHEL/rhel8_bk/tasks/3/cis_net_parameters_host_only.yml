@@ -1,0 +1,34 @@
+- name: "3.2 Configure Network Kernel Modules"
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+
+    - name: "Disabled in CIS.conf"
+      lineinfile:
+        path: /etc/modprobe.d/CIS.conf
+        regexp: "{{ item.regex }}"
+        line:  "{{ item.lin3 }}"
+        create: true
+        mode: 0600
+      with_items:
+        - { name: "3.2.1 | Ensure DCCP is disabled", regex: ""^(#)?install dccp(\\s|$)"", lin3: "install dccp /bin/true" }
+        - { name: "3.2.2 | Ensure tipc kernel module is not available", regex: ""^(#)?install tipc(\\s|$)"", lin3: "install tipc /bin/true"}
+        - { name: "3.2.3 | Ensure rds kernel module is not available", regex: ""^(#)?install rds(\\s|$)"", lin3: "install rds /bin/true"} #oracle protocol
+        - { name: "3.2.4 | Ensure SCTP is disabled" , regex: "^(#)?install sctp(\\s|$)", lin3: "install sctp /bin/true"}
+
+    - name: "Disabled in Blacklist"
+      lineinfile:
+        path: /etc/modprobe.d/blacklist.conf
+        regexp: "{{ item.regex }}"
+        line:  "{{ item.lin3 }}"
+        create: true
+        mode: 0600
+      with_items:
+        - { name: "3.2.1 | Ensure DCCP is disabled", regex: "^(#)?blacklist dccp(\\s|$)", lin3: "blacklist dccp" }
+        - { name: "3.2.2 | Ensure tipc kernel module is not available", regex: "^(#)?blacklist tipc(\\s|$)", lin3: "blacklist tipc"}
+        - { name: "3.2.3 | Ensure rds kernel module is not available", regex: "^(#)?blacklist rds(\\s|$)", lin3: "blacklist rds"} #oracle protocol
+        - { name: "3.2.4 | Ensure SCTP is disabled" , regex: "^(#)?blacklist sctp(\\s|$)", lin3: "blacklist sctp"}

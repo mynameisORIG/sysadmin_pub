@@ -1,0 +1,15 @@
+---
+# var file for RHEL8-CIS
+
+allowed_crypto_policies:
+  - 'DEFAULT'
+  - 'FUTURE'
+  - 'FIPS'
+
+allowed_crypto_policies_modules:
+  - 'OSPP'
+  - 'AD-SUPPORT'
+
+# Used to control warning summary
+warn_control_list: ""
+warn_count: 0

@@ -1,0 +1,31 @@
+- name: "4.3 | Configure logrotate"
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  vars:
+    folder: 
+      - /etc/logrotate.d/
+    file:
+      - /etc/logrotate.conf
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+
+    - name: "4.3 | Ensure logrotate is configured"
+      block:
+        - name: "4.3 | Ensure logrotate is configured | Get logrotate settings"
+          find: 
+            paths: " {{ folder[0] }}"
+          register: log_rotates
+
+        - name: "4.3 | Ensure logrotate is configured"
+          replace:
+            path: "{{ item.path }}"
+            regexp: '^(\s*)(daily|weekly|monthly|yearly)$'
+            replace: "\\1{{ logrotate }}"
+          with_items:
+            - "{{ log_rotates.files }}"
+            - { path: "{{ file[0] }}" }
+          loop_control:
+              label: "{{ item.path }}"

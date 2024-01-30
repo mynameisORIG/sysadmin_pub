@@ -1,0 +1,17 @@
+- name: edit /etc/modprobe.d/ settings to servers
+  become: true
+  hosts: rhel
+  tasks:
+    - name: copy /etc/modprobe.d/CIS.conf to servers
+      copy:
+        src: /home/ansible/files/modprobe/CIS.conf
+        dest: /etc/modprobe.d/CIS.conf
+
+    - name: copy /etc/modprobe.d/blacklist.conf to servers
+      copy:
+        src: /home/ansible/files/modprobe/blacklist.conf
+        dest: /etc/modprobe.d/blacklist.conf
+
+# 1.1.10 Disable USB
+    - name: unload usb-storage module
+      command: rmmod usb-storage

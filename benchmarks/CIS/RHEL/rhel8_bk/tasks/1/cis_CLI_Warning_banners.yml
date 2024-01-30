@@ -1,0 +1,36 @@
+- name: "Command Line Warning Banners"
+  become: true
+  hosts: rhel
+  vars:
+    file:
+      - ../../templates/etc/banner.j2
+      - /etc/issue
+      - /etc/issue.net
+      - /etc/motd
+  vars_files: 
+    - ../../defaults/main.yml
+  tasks:
+
+    - name: '1.7.1 | 1.7.2| 1.7.3 | Ensure warning banner and motd are configured properly'
+      template:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: 0644
+      with_items:
+        - { src: "{{ file[0] }}", dest: "{{ file[3] }}" }
+        - { src: "{{ file[0] }}", dest: "{{ file[1] }}" }
+        - { src: "{{ file[0] }}", dest: "{{ file[2] }}" }
+
+    - name: '1.7.4 | 1.7.5 | 1.7.6 | Ensure permissions on /etc/motd, /etc/issue, and /etc/issue.net are configured'
+      file:
+        path: "{{ item}}"
+        state: file
+        owner: root
+        group: root
+        mode: 0644
+      with_items:
+        - "{{ file[3] }}"
+        - "{{ file[1] }}"
+        - "{{ file[2] }}"

@@ -1,0 +1,114 @@
+- name: "3.4.3.2 Iptables IPv4 "
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+
+    - name: "3.4.3.2.1 | Ensure iptables loopback traffic is configured"
+      block:
+        - name: "3.4.3.2.1 | Ensure iptables loopback traffic is configured | INPUT Loopback ACCEPT"
+          iptables:
+              action: append
+              chain: INPUT
+              in_interface: lo
+              jump: ACCEPT
+
+        - name: "3.4.3.2.1 | Ensure iptables loopback traffic is configured | OUTPUT Loopback ACCEPT"
+          iptables:
+              action: append
+              chain: OUTPUT
+              out_interface: lo
+              jump: ACCEPT
+
+        - name: "3.4.3.2.1 | Ensure iptables loopback traffic is configured | INPUT Loopback 127.0.0.0/8"
+          iptables:
+              action: append
+              chain: INPUT
+              source: 127.0.0.0/8
+              jump: DROP
+
+    - name: "3.4.3.2.2 | Ensure iptables outbound and established connections are configured"
+      iptables:
+        action: append
+        chain: '{{ item.chain }}'
+        protocol: '{{ item.protocol }}'
+        match: state
+        ctstate: '{{ item.ctstate }}'
+        jump: ACCEPT
+      with_items:
+          - { chain: OUTPUT, protocol: tcp, ctstate: 'NEW,ESTABLISHED' }
+          - { chain: OUTPUT, protocol: udp, ctstate: 'NEW,ESTABLISHED' }
+          - { chain: OUTPUT, protocol: icmp, ctstate: 'NEW,ESTABLISHED' }
+          - { chain: INPUT, protocol: tcp, ctstate: ESTABLISHED }
+          - { chain: INPUT, protocol: udp, ctstate: ESTABLISHED }
+          - { chain: INPUT, protocol: icmp, ctstate: ESTABLISHED }
+
+    - name: "3.4.3.2.3 | Ensure iptables rules exist for all open ports"
+      block:
+        - name: "3.4.3.2.3 | Ensure iptables rules exist for all open ports | Get list of TCP open ports"
+          shell: netstat -ant |grep "tcp.*LISTEN" | awk '{ print $4 }'| sed 's/.*://'
+          changed_when: false
+          failed_when: false
+          register: cis_3_4_3_2_3_otcp
+
+        - name: "3.4.3.2.3 | Ensure iptables rules exist for all open ports | Get the list of udp open ports"
+          shell: netstat -ant |grep "udp.*LISTEN" | awk '{ print $4 }'| sed 's/.*://'
+          changed_when: false
+          failed_when: false
+          register: cis_3_4_3_2_3_oudp
+
+        - name: "3.4.3.2.3 | Ensure iptables rules exist for all open ports | Adjust open tcp ports"
+          iptables:
+              action: append
+              chain: INPUT
+              protocol: tcp
+              destination_port: "{{ item }}"
+              match: state
+              ctstate: NEW
+              jump: ACCEPT
+          with_items:
+              - "{{ cis_3_4_3_2_3_otcp.stdout_lines }}"
+
+        - name: "3.4.3.2.3 | Ensure iptables rules exist for all open ports | Adjust open udp ports"
+          iptables:
+            action: append
+            chain: INPUT
+            protocol: udp
+            destination_port: "{{ item }}"
+            match: state
+            ctstate: NEW
+            jump: ACCEPT
+          with_items:
+            - "{{ cis_3_4_3_2_3_oudp.stdout_lines }}"
+
+    - name: "3.4.3.2.4 | Ensure iptables default deny firewall policy"
+      block:
+        - name: "3.4.3.2.4 | Ensure iptables default deny firewall policy | Configure ssh to be allowed"
+          iptables:
+            chain: INPUT
+            protocol: tcp
+            destination_port: "22"
+            jump: ACCEPT
+
+        - name: "3.4.3.2.4 | Ensure iptables default deny firewall policy | Set drop items"
+          iptables:
+            policy: DROP
+            chain: "{{ item }}"
+          with_items:
+            - INPUT
+            - FORWARD
+            - OUTPUT
+    
+    - name: "3.4.3.2.5 | Ensure iptables rules are saved"
+      community.general.iptables_state:
+        state: saved
+        path: /etc/sysconfig/iptables
+
+    - name: "3.4.3.2.6 | PATCH | Ensure iptables service is enabled and active"
+      service:
+        name: iptables
+        enabled: true
+        state: started

@@ -1,0 +1,47 @@
+- name: 1.4 Secure Boot Settings
+  become: yes
+  hosts: rhel
+  vars:
+    grubPasswordFile:
+      /boot/grub2/user.cfg
+    systemctlFile:
+      /etc/systemd/system/recuse.service.d/00-require-auth.conf
+  tasks:
+  
+    - name: 1.4.1 Ensure bootloader password is set
+      block:
+        - name: bootloader password file
+          stat:
+            path: "{{ grubPasswordFile }}"
+          register: grub_password_file
+
+        - name: bootloader password exists
+          debug:
+            msg: "The file exists, which most likely means there is a password in grub. Please double check"
+          when: grub_password_file.stat.exists
+
+        - name: bootloader password does not exists
+          debug:
+            msg: "The bootloader password file does not exists, which most likely means there is not a password in grub. Please double check and setup a password with grub by running: grub2-setpassword"
+          when: not grub_password_file.stat.exists
+
+      - name: 1.4.2 Ensure permissions on bootloader config are configured
+        block:
+          - name: File Permissions
+            file: 
+              path: "{{ grubPasswordFile }}"
+              owner: root
+              group: root
+              mode: 0600
+      
+      - name: 1.4.3 Ensure authentication is required when booting into rescue mode
+        block:
+          - name: systemctl authentication booting
+            lineinfile: 
+              path: "{{ grubPasswordFile }}"
+              regexp: '^ExecStart='
+              line: 'ExecStart=-/usr/lib/systemd/systemd-sulogin-shell rescue'
+              create: true
+              owner: root
+              group: root
+              mode: 0644

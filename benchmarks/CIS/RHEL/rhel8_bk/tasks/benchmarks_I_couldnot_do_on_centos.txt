@@ -1,0 +1,23 @@
+1.2.1
+# would of required putting in a username and password which would be a risk of showing credentials to unwanted users
+1.2.2
+# very complicated and probably is better looking manually
+1.3.1 + 1.3.2
+# it should be very easy but not how NCS network works
+# pg 106
+# pg 109
+1.4.1 - Ensure bootloader password is set
+# pg 112
+# can't do this because it shows the password in plaintext inside a file.
+1.6.1.6
+# had trouble with ansible
+2.4
+# manual check to make sure unneeded services are removed. Not worth creating something just to remind you
+
+4.1.3.21
+#pg 442
+# manual check
+
+6.2.1 - Ensure password fields are not empty
+# pg 627
+#  don't know what is going on with empty_password_accounts. 
