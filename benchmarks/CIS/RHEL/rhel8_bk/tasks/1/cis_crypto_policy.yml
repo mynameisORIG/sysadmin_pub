@@ -1,0 +1,48 @@
+- name: 1.6 Crypto Policy
+  become: yes
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+
+    - name: "1.6.1 | Ensure system-wide crypto policy is not legacy"
+      block:
+        - name: "1.6.1 | Ensure system-wide crypto policy is not legacy | set_fact"
+          set_fact:
+            full_crypto_policy: "{{ crypto_policy }}{% if crypto_policy_module | length > 0 %}:{{ crypto_policy_module }}{% endif %}"
+
+        - name: "1.6.1 | PATCH | Ensure system-wide crypto policy is not legacy"
+          shell: |
+              update-crypto-policies --set "{{ full_crypto_policy }}"
+              update-crypto-policies
+          notify: change_requires_reboot
+
+    - name: "1.6.2 | Ensure system wide crypto policy disables sha1 hash and signature support"
+      block:
+        - name: "creating .pmod file" 
+          file:
+            path: /etc/crypto-policies/policies/modules/UNCCrypto.pmod
+            state: touch
+
+        - name: "editing .pmod file"
+          blockinfile:
+            path: /etc/crypto-policies/policies/modules/UNCCrypto.pmod
+            block: |
+              hash = -SHA1
+              sign = -*-SHA1
+              sha1_in_certs = 0
+
+        - name: "commiting the changes"
+          command: update-crypto-policies --set DEFAULT:NO-SHA1
+
+    - name: "1.6.3 | Ensure system wide crypto policy disables cbc for ssh"
+      block:
+        
+        - name: Disable CBC in SSH server configuration
+          lineinfile:
+            path: /etc/crypto-policies/policies/modules/UNCCrypto.pmod
+            regexp: '^#?Ciphers'
+            line: 'Ciphers aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com'
+          notify: restart sshd

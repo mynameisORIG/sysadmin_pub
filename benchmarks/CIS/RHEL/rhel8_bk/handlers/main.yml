@@ -1,0 +1,59 @@
+- name: restart rsyslog
+  service:
+    name: rsyslog
+    state: restarted
+
+- name: restart_gdm
+  service:
+    name: gdm
+    state: restarted
+
+- name: systemd_daemon_reload
+  systemd:
+    daemon-reload: true
+
+- name: grub2cfg
+  shell: 'grub2-mkconfig -o {{ grub_cfg.stat.lnk_source }}'
+  ignore_errors: true
+  notify: change_reuires_reboot
+
+- name: reload dconf
+  ansible.builtin.shell: dconf update
+
+- name: restart postfix
+  service:
+      name: postfix
+      state: restarted
+
+- name: grub2cfg
+  shell: "grub2-mkconfig -o {{ grub_cfg.stat.lnk_source }}"
+  ignore_errors: true  # noqa ignore-errors
+  notify: change_requires_reboot
+
+- name: update auditd
+  template:
+    src: audit/99_auditd.rules.j2
+    dest: /etc/audit/rules.d/99_auditd.rules
+    owner: root
+    group: root
+    mode: 0600
+  notify: restart auditd
+
+- name: restart auditd
+  # service:
+  #   name: auditd
+  #   state: restarted
+  shell: /sbin/service auditd restart
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: restart sshd
+  service:
+    name: sshd
+    state: restarted
+
+# best if last
+- name: change_requires_reboot
+  set_fact:
+    change_requires_reboot: true

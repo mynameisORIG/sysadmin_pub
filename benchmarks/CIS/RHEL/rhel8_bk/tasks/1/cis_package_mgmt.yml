@@ -1,0 +1,26 @@
+- name: package management
+  become: true
+  hosts: rhel
+  tasks:
+    
+    # 1.2.3 Ensure gpgcheck is globally activated
+    # needs more work.
+    # giving path file does not exist when it does
+    - name: 1.2.3 | Find repos
+      find:
+          paths: /etc/yum.repos.d
+          patterns: '*.repo'
+      register: yum_repos
+      changed_when: false
+    
+    #- debug: msg="{{ yum_repos.files }}"
+    
+    - name: 1.2.3 | Update yum.repos
+      replace:
+          name: file
+          regexp: "^gpgcheck=0"
+          replace: "gpgcheck=1"
+      with_items: 
+        - "{{ yum_repos.files }}"
+      loop_control:
+        label: '{{ item.path }}'

@@ -1,0 +1,36 @@
+- name: 1.5 Additonal Process Hardening
+  become: yes
+  hosts: rhel
+  vars:
+    file: 
+      /etc/systemd/coredump.conf
+    systemdValue:
+      2
+  tasks:
+
+    - name: 1.4.4 Ensure core dump storage is disabled
+      lineinfile:
+        path: "{{ file }}"
+        regexp: 'Storage='
+        line: 'Storage=none'
+      notify: systemd_daemon_reload
+
+    - name: 1.4.3 Ensure core dump backtraces are disabled
+      lineinfile:
+        path: "{{ file }}"
+        regexp: 'ProcessSizeMax='
+        line: 'ProcessSizeMax=0'
+    
+    - name: 1.4.1 Ensure address space layout randomization (ASLR) is enabled
+      sysctl:
+        name: kernel.randomize_va_space
+        value: "{{ systemdValue }}"
+        sysctl_set: true
+        ignoreerrors: true  
+
+    - name: 1.4.2 Ensure ptrace_scope is restriced
+      sysctl:
+        name: kernel.yama.ptrace_scope
+        value: 1
+        state: present
+        reload: yes

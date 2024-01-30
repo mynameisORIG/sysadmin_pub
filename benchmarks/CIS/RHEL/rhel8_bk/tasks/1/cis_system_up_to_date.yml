@@ -1,0 +1,16 @@
+- name: "System Updates"
+  become: true
+  hosts: rhel
+  tasks:
+
+    - name: "1.9 | Ensure updates, patches, and additional security software are installed"
+      package:
+        name: "*"
+        state: latest
+      notify: change_requires_reboot
+
+    - name: "1.9 | Ensure updates, patches, and additional security software are installed | limit kernels"
+      lineinfile:
+        path: /etc/dnf/dnf.conf
+        regexp: ^installonly_limit=
+        line: installonly_limit={{ installed_kernel_limit }}

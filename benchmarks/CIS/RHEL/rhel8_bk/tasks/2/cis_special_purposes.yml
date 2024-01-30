@@ -1,0 +1,69 @@
+- name: "2.2 Special Purposes"
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  vars:
+    file:
+      - /etc/postfix/main.cf
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+    
+    
+    # not sure where 3.0 goes
+    - name: "making sure service packages are not installed or in use"
+      package:
+        name: "{{ item.pkg }}"
+        state: absent
+      with_items:
+        - { name: "2.2.1 | Ensure autofs services are not in use", pkg: "{{ packages_absent[30] }}"} # only comment 2.2.1 if computer is using autofs services
+        - { name: "2.2.3 | Ensure DHCP Server services are not in use", pkg: " {{ packages_absent[8] }} "} # only comment 2.2.3 if computer is a dhcp server
+        - { name: "2.2.4 | Ensure DNS Server services is not in use", pkg: " {{ packages_absent[9] }} "} # only comment 2.2.4 if computer is a DNS server
+        - { name: "2.2.5 | Ensure dnsmasq services are not in use", pkg: "{{ packages_absent[31] }}"} # only comment 2.2.5 if computer is using dnsmasq services
+        - { name: "2.2.6 | PATCH | Ensure Samba is not enabled", pkg: " {{ packages_absent[17] }} "} # Samba/SMB area
+        - { name: "2.2.7 | Ensure FTP Server is not installed | Remove ftp package", pkg: " {{ packages_absent[35] }} "} # FTP area ; proftpd
+        - { name: "2.2.7 | Ensure FTP Server is not installed | Remove vsftp package", pkg: " {{ packages_absent[11] }} "} # FTP area ; vsftp
+        - { name: "2.2.8 | Ensure message access server services are not in use", pkg: " {{ packages_absent[15] }} "} # dovecot
+        - { name: "2.2.8 | Ensure message access server services are not in use", pkg: " {{ packages_absent[32] }} "} # postfix
+        - { name: "2.2.9 | Ensure network file system services are not in use", pkg: " {{ packages_absent[33] }} "} # nfs-utils comment the section below if you do need network shares
+        - { name: "2.2.9 | Ensure network file system services are not in use", pkg: " {{ packages_absent[34] }} "} # rpcbind
+        - { name: "2.2.10 | Ensure NIS Server is not installed", pkg: " {{ packages_absent[20] }} "} # NIS area
+        - { name: "2.2.11 | Ensure CUPS is not installed", pkg: " {{ packages_absent[7] }} "} # cups/printing server NOTE: commenting 2.2.11 will result in having the computer not being able to print
+        - { name: "2.2.12 | Ensure rpcbind is not installed or the rpcbind services are masked". pkg: "{{ services[3] }}"} # rpcbind
+        - { name: "2.2.12 | Ensure rpcbind is not installed or the rpcbind services are masked". pkg: "{{ services[4] }}"} # rpcbind.socket
+        - { name: "2.2.13 | Ensure rsync service is not enabled", pkg: " {{ packages_absent[22] }} "} # rsync area
+        - { name: "2.2.14 | Ensure snmp services are not in use", pkg: " {{ packages_absent[19] }} "} # net-snmp
+        - { name: "2.2.14 | Ensure snmp services are not in use", pkg: " {{ packages_absent[35] }} "} # net-snmp
+        - { name: "2.2.15 | Ensure telnet-server is not installed", pkg: " {{ packages_absent[21] }} "} # telnet area
+        - { name: "2.2.16 | Ensure TFTP Server is not installed", pkg: " {{ packages_absent[12] }} "} # tftp area
+        - { name: "2.2.17 | PATCH | Ensure HTTP Proxy Server is not installed", pkg: " {{ packages_absent[18] }} " } # squid
+        - { name: "2.2.18 | PATCH | Ensure a web server is not installed | Remove httpd server", pkg: " {{ packages_absent[13] }} "}
+        - { name: "2.2.18 | PATCH | Ensure a web server is not installed | Remove nginx server", pkg: " {{ packages_absent[14] }} "}
+        - { name: "2.2.19 | Ensure xinetd is not installed", pkg: " {{ packages_absent[3] }}"} # xinetd is what was used before systemd. By not commenting 2.2.1, will result in xinetd being uninstalled. 
+        - { name: "2.2.20 | Ensure X window server services are not in use", pkg: " {{ packages_absent[4] }} "} # xorg-x11-server-common is used if the computer has a GUI. Leaving 2.2.20 uncomment will result in an only CLI computer.
+
+
+    # 2.2.2 Avahi results in auto discovery of network. Uncommenting will result in network services having to be discovered manually.
+    # - name: "2.2.2 | Ensure Avahi dameon services are not in use"
+    #   package:
+    #     name:
+    #       - " {{ packages_absent[5] }} "
+    #       - " {{ packages_absent[6] }} "
+    #     state: absent
+
+    # email area
+    - name: "2.2.11 | Ensure IMAP and POP3 server is not installed"
+      package:
+        name:
+          - " {{ packages_absent[15] }} "
+          - " {{ packages_absent[16] }} "
+        state: absent
+
+    # mail server
+    - name: "2.2.21 |Ensure mail transfer agent is configured for local-only mode"
+      lineinfile:
+        path: "{{ file[0] }}"
+        regexp: "^(#)?inet_interfaces"
+        line: "inet_interfaces = loopback-only"
+      notify: restart postfix

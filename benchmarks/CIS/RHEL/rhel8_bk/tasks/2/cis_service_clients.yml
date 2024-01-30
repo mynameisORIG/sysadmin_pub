@@ -1,0 +1,17 @@
+- name: "2.2 Special Purposes"
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  tasks:
+  
+  - name: "making sure service packages are not installed"
+    package:
+      name: "{{ item.pkg }}"
+      state: absent
+    with_items:
+    - { name: "2.3.1 | Ensure FTP client is not installed ", pkg: " {{ packages_absent[10] }} "} # ftp
+      # - { name: "2.3.2 | Ensure LDAP client is not installed", pkg: " {{ packages_absent[26] }} " }
+      - { name: "2.3.3 | PATCH | Ensure NIS Client is not installed", pkg: " {{ packages_absent[22] }} " } # nis
+      - { name: "2.3.4 | Ensure telnet client is not installed", pkg: " {{ packages_absent[25] }} "} # telnet
+      - { name: "2.3.5 | PATCH | Ensure TFTP client is not installed", pkg: " {{ packages_absent[27] }} "} # tftp

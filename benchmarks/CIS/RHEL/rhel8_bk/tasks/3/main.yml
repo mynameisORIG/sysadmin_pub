@@ -1,0 +1,42 @@
+# - name: "3 Network Services"
+#   become: yes
+#   vars_files: 
+#     - ../../defaults/main.yml
+#   tasks:
+
+- name: "SECTION | 3.1.x | Disable unused network protocols and devices"
+  import_tasks: cis_protocol_and_devices.yml
+
+- name: "SECTION | 3.2.x | Network Parameters (Host Only)"
+  import_tasks: cis_net_parameters_host_only.yml
+
+- name: "SECTION | 3.3.x | Network Parameters (Host and Router)"
+  import_tasks: cis_net_parameters_host_router.yml
+
+#  not configured
+# - name: "SECTION | 3.4.1.x | Configure firewalld"
+#   import_tasks: cis_3.4.1.x.yml
+#   when:
+#       - rhel8cis_firewall == "firewalld"
+
+#  not confiugred 
+# - name: "SECTION | 3.4.2.x | Configure nftables"
+#   import_tasks: cis_3.4.2.x.yml
+#   when:
+#       - rhel8cis_firewall == "nftables"
+
+- name: "SECTION | 3.4.3.1.x | Configure iptables software"
+  import_tasks: cis_iptables_software.yml
+  when:
+      - rhel8cis_firewall == "iptables"
+
+- name: "SECTION | 3.4.3.2.x | Configure IPv4 iptables"
+  import_tasks: cis_3.4.3.2.x.yml
+  when:
+      - rhel8cis_firewall == "iptables"
+
+# not configured since we do not have IPv6 anywhere
+# - name: "SECTION | 3.4.3.3.x | Configure IPv6 iptables"
+#   import_tasks: cis_3.4.3.3.x.yml
+#   when:
+#       - ( rhel8cis_firewall == "iptables" and rhel8cis_ipv6_required )

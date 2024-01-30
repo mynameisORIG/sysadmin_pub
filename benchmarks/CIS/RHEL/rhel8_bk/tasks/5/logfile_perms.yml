@@ -1,0 +1,45 @@
+- name: "4.2.3 | Configure logfile perms"
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  vars:
+    file: 
+      - /etc/rsyslog.conf
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+
+    - name: "Prerequisite | Install python3-jmespath"
+      pip:
+        name: jmespath
+        state: present
+        executable: pip3
+      become: yes
+
+    - name: "4.2.3 | Ensure permissions on all logfiles are configured"
+      block:
+      - name: "4.2.3 | Ensure permissions on all logfiles are configured | find files"
+        shell: find /var/log/ -type f -perm /g+wx,o+rwx -exec ls {} \;
+        changed_when: false
+        failed_when: false
+        register: logfiles
+
+      # errors out because it thinks we don't have jmespath but we do
+      # - name: "4.2.3 | Ensure permissions on all logfiles are configured | set_fact"
+      #   set_fact:
+      #     logfiles_flattened: "{{ logfiles | json_query('stdout_lines[*]') | flatten }}" 
+      #   when:
+      #     - logfiles.stdout_lines | length > 0
+      #     - logfiles is defined
+
+      - name: "4.2.3 | Ensure permissions on all logfiles are configured | change permissions"
+        file:
+          path: "{{ item }}"
+          mode: 0640
+        loop: "{{ logfiles_flattened }}"
+        when:
+          - logfiles_flattened is defined
+          - item != "/var/log/btmp"
+          - item != "/var/log/utmp"
+          - item != "/var/log/wtmp"

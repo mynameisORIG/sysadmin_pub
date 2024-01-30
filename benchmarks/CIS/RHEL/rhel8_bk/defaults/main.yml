@@ -1,0 +1,295 @@
+system_is_container: false
+
+# SELinux policy
+selinux_policy: targeted
+
+selinux_disable: false
+
+# Warning Banner Content (issue, issue.net, motd)
+rhel8cis_warning_banner: |
+    Authorized uses only. All activity may be monitored and reported.
+# End Banner
+
+packages_present: 
+    - libselinux
+    - chrony
+    - iptables
+    - iptables-services
+    - audit
+    - audit-libs
+    - rsyslog
+    - sudo
+packages_absent:
+    - gdm
+    - setroubleshoot
+    - mcstrans
+    - xinetd
+    - xorg-x11-server-common
+    - avahi-autoipd
+    - avahi
+    - cups
+    - dhcp-server
+    - bind
+    - ftp
+    - vsftp
+    - tftp-server
+    - httpd
+    - nginx
+    - dovecot
+    - cyrus-imapd
+    - samba
+    - squid
+    - net-snmp
+    - ypserv
+    - telnet-server
+    - rsync
+    - ypbind
+    - rsh
+    - talk
+    - telnet
+    - openldap-clients
+    - tftp
+    - nftables
+    - autofs
+    - dnsmasq
+    - postfix
+    - nfs-utils
+    - rpcbind
+    - net-snmp-utils
+    - proftpd
+
+services:
+    - auditd.service
+    - autofs.service
+    - nfs-utils
+    - rpcbind
+    - rpcbind.socket
+    - rsyslog
+    - crond
+
+# 1.9 patch system
+apply_installed_kernel_limit: false
+installed_kernel_limit: 2
+
+# 1.10/1.11 Set crypto policy (LEGACY, DEFAULT, FUTURE, FIPS)
+# Control 1.10 states do not use LEGACY and control 1.11 says to use FUTURE or FIPS.
+crypto_policy: 'DEFAULT'
+# Added module to be allowed as default setting (Allowed options in vars/main.yml)
+crypto_policy_module: ''
+
+time_synchronization_servers:
+    - 0.pool.ntp.org
+    - 1.pool.ntp.org
+    - 2.pool.ntp.org
+    - 3.pool.ntp.org
+
+chrony_server_options: "minpoll 8"
+ntp_server_options: "iburst"    
+
+# Section3 variables
+
+# default location for the sysctl overrides.
+sysctl_file: /etc/sysctl.d/99_cis.conf
+
+# Firewall Service - either firewalld, iptables, or nftables
+firewall: iptables
+
+# 3.4.1.5 Default zone setting
+default_zone: public
+
+# 3.4.2.5 Zone and Interface setting
+int_zone: customezone
+interface: eth0
+
+firewall_services:
+    - cockpit
+    - dhcpv6-client
+    - ssh
+
+# 3.4.2.5 Set nftables new table create
+# 3.4.2.6
+# 3.4.2.7
+# 3.4.2.8
+# 3.4.2.9
+# 3.4.2.11
+nft_tables_autonewtable: true
+nft_tables_tablename: filter
+
+# 3.4.2.6 Set nftables new chain create
+nft_tables_autochaincreate: true
+
+# requires reboot
+ipv6_disable_localhost: false
+# disable ipv6 for sshd
+ipv6_sshd_disable: false
+# disable chrony on ipv6
+ipv6_chrony_disable: false
+
+# System network parameters (host only OR host and router)
+is_router: false
+
+# IPv6 required
+ipv6_required: true
+
+sysctl_force: true
+
+## Section4 vars
+
+update_audit_template: false
+
+cis_auditd:
+    space_left_action: email
+    action_mail_acct: root
+    admin_space_left_action: halt
+    max_log_file_action: keep_logs
+
+# This can be used to configure other keys in auditd.conf
+cis_auditd_extra_conf: {}
+
+logrotate: "daily"
+
+# The audit_back_log_limit value should never be below 8192
+audit_back_log_limit: 8192
+
+# The max_log_file parameter should be based on your sites policy
+max_log_file_size: 10
+
+# OS logging system - either rsyslog or journald or other if 3rd party tool
+syslog: rsyslog
+rsyslog_ansiblemanaged: true
+
+# RHEL-08-4.2.1.4/4.2.1.5 remote and destination log server name
+remote_log_server: logagg.example.com
+
+# 4.2.1.5, 4.2.2.1.3, 4.2.2.1.4
+system_is_log_server: false
+
+# 4.2.2.1.2
+# rhel8cis_journal_upload_url is the ip address to upload the journal entries to
+#journal_upload_url: 192.168.50.42
+# The paths below have the default paths/files, but allow user to create custom paths/filenames
+journal_upload_serverkeyfile: "/etc/ssl/private/journal-upload.pem"
+journal_servercertificatefile: "/etc/ssl/certs/journal-upload.pem"
+journal_trustedcertificatefile: "/etc/ssl/ca/trusted.pem"
+
+# 4.2.2.1
+# The variables below related to journald, please set these to your site specific values
+# rhel8cis_journald_systemmaxuse is the max amount of disk space the logs will use
+journald_systemmaxuse: 10M
+# rhel8cis_journald_systemkeepfree is the amount of disk space to keep free
+journald_systemkeepfree: 100G
+journald_runtimemaxuse: 10M
+journald_runtimekeepfree: 100G
+# rhel8cis_journald_MaxFileSec is how long in time to keep log files. Values are Xm, Xh, Xday, Xweek, Xmonth, Xyear, for example 2week is two weeks
+journald_maxfilesec: 1month
+
+# 4.2.3 logrotate configuration
+# change to true if you wish to change logrotate.d conf files
+allow_logrotate_conf_umask_updates: false
+
+## Section5 vars
+
+sshd:
+    clientalivecountmax: 0
+    clientaliveinterval: 900
+    logingracetime: 60
+    # WARNING: make sure you understand the precedence when working with these values!!
+    # allowusers:
+    # allowgroups: systems dba
+    # denyusers:
+    # denygroups:
+pam_faillock:
+    attempts: 5
+    interval: 900
+    unlock_time: 900
+    fail_for_root: 'no'
+    remember: 5
+    pwhash: sha512
+
+# 5.2.5 SSH LogLevel setting. Options are INFO or VERBOSE
+ssh_loglevel: INFO
+
+# 5.2.19 SSH MaxSessions setting. Must be 10 or less
+ssh_maxsessions: 10
+
+# 5.3.1 Enable automation to create custom profile settings, using the settings above
+authselect_custom_profile_create: false
+
+# 5.3.2 Enable automation to select custom profile options, using the settings above
+authselect_custom_profile_select: false
+
+# 5.3.3 sudo log location variable
+sudolog_location: "/var/log/sudo.log"
+
+# 5.3.6 rhel8cis_sudo_timestamp_timeout is the timeout set to authentication in minutes
+# To conform to CIS standards this needs to be 15 minutes or less
+sudo_timestamp_timeout: 15
+
+# 5.3.7
+sugroup: wheel
+
+# wheel users list
+sugroup_users: "root"
+
+# 5.4.1/5.4.2 Custom authselect profile settings. Settings in place now will fail, they are place holders from the control example
+# Due to the way many multiple options and ways to configure this control needs to be enabled and settings adjusted to minimise risk
+use_authconfig: false
+authselect:
+    custom_profile_name: custom-profile
+    default_file_to_copy: "sssd --symlink-meta"
+    options: with-sudo with-faillock without-nullok
+
+# Its not provider recommended to run changes to pam files manually that affects authentication
+# This control needs to be set to ACCEPT this so that the changes do take place
+# Any other value does nothing
+pamd_manual_risks: NEVER
+
+# 5.6.1.1
+# 5.6.1.2
+# 5.6.1.3
+pass:
+    max_days: 365
+    min_days: 7
+    warn_age: 7
+
+# 5.6.1.4
+inactivelock:
+    lock_days: 30
+
+# 5.6.1.5 Allow ansible to expire password for account with a last changed date in the future. False will just display users in violation, true will expire those users passwords
+futurepwchgdate_autofix: true
+
+## PAM
+pam_password:
+    minlen: 14
+    minclass: 4
+
+# This is a dynamic check but can be overridden here marking it as false and uncomment
+uid_info_dynamic: true
+# rhel8uid_interactive_uid_start: 1000
+# rhel8uid_interactive_uid_stop: 60000
+
+# 5.6.3
+# Session timeout setting file (TMOUT setting can be set in multiple files)
+# Timeout value is in seconds. (60 seconds * 10 = 600)
+shell_session_timeout:
+    file: /etc/profile.d/tmout.sh
+    timeout: 900
+
+## Section6 vars
+
+# RHEL-08_6.1.1
+rpm_audit_file: /var/tmp/rpm_file_check
+
+# RHEL-08_6.1.11 Allow ansible to adjust world-writable files. False will just display world-writable files, True will remove world-writable
+no_world_write_adjust: true
+passwd_label: "{{ (this_item | default(item)).id }}: {{ (this_item | default(item)).dir }}"
+
+# 6.2.9 - adjusting symlinks in home directories
+# Default in ansible is true this causes lots of issues for many users
+# set as variable so can be overridden but default is not to follow.
+
+follow_home_symlinks: false
+
+# 6.2.12
+dotperm_ansiblemanaged: true

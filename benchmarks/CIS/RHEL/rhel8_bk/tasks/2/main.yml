@@ -1,0 +1,18 @@
+# - name: "2 Services"
+#   become: yes
+#   vars_files: 
+#     - ../../defaults/main.yml
+#   tasks:
+
+- name: "SECTION | 2.1 | Time Synchronization"
+  import_tasks: ./cis_time_sync.yml
+
+- name: "SECTION | 2.2 | Special Purpose Services"
+  import_tasks: ./cis_special_purposes.yml
+
+  - name: "SECTION | 2.3 | Service Clients"
+  import_tasks: cis_service_clients.yml
+
+# This is a manually task. I can create this, but it's only job will be to output data.
+# - name: "SECTION | 2.4 | Nonessential services removed"
+#   ansible.builtin.import_tasks: cis_2.4.yml

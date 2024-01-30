@@ -1,0 +1,81 @@
+- name: "5.2.4 Configure auditd file access "
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  vars:
+    file: 
+      /var/log/audit
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+
+    - name: 5.2.4.1 | Ensure the audit log direcotry is 750 or more restrictive
+      file:
+        path: "{{ file }}"
+        mode: 0750
+        state: directory
+
+    - name: 5.2.4.2 | Ensure audit log files are mode 0640 or less permissive
+      block:
+
+        - name: Find audit log files and set permissions
+          find:
+            paths: "{{ file }}"
+            patterns:  "*.log"
+            register: audit_log_files
+
+        - name: Set audit log files permissions
+          file:
+            path: "{{ item.path }}"
+            mode: 0640
+          with_items: "{{ audit_log_files.files }}"
+
+    - name: 5.2.4.3 | Ensure only authorized users own audit log files
+      lineinfile:
+        path: /etc/audit/auditd.conf
+        regexp: '^(\s*log_file\s*=\s*)(\S+)$'
+        line: '\1\2:user:group'
+        backrefs: yes
+      notify: restart_auditd
+
+    - name: 5.2.4.4 | Ensure only authorized groups are assigned ownership of audit log files
+      lineinfile:
+        path: /etc/audit/auditd.conf
+        regexp: '^(\s*log_group\s*=\s*)(\S+)$'
+        line: '\1root'
+        backrefs: yes
+      notify: restart_auditd
+
+    - name: 5.2.4.5 | 5.2.4.6 | 5.2.4.7
+      block:
+
+        - name: Find audit configuration files
+          find:
+            paths: /etc/audit
+            patterns: '*.conf'
+          register: audit_files
+
+        - name: Ensure audit configuration files are 640 or more restrictive + owned by root
+          file:
+            path: "{{ item.path }}"
+            owner: root
+            group: root
+            mode: '0640'
+          with_items: "{{ audit_files.files }}"
+
+    - name: 5.2.4.8 | 5.2.4.9| 5.2.4.10
+      block:
+        - name: Ensure audit tools are 755 or more restrictive + owned by root
+          find:
+            paths: /sbin
+            patterns: 'audit*'
+          register: audit_tools
+
+        - name: Set permissions for audit tools
+          file:
+            path: "{{ item.path }}"
+            owner: root
+            group: root
+            mode: "0755"
+          with_items: "{{ audit_tools.files }}"

@@ -1,0 +1,77 @@
+# script runs but ignores the errors with grub2cfg handler
+- name: "4.1.1 Auditd Enabled "
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  vars:
+    file: 
+      /etc/default/grub
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+    - name: "5.2.1.1 | Ensure audit is installed"
+      block:
+        - name:  "5.2.1.1 | Ensure auditd is installed | Install auditd packages"
+          package:
+            name: " {{ packages_present[4] }} "
+            state: present
+        
+        - name:  "5.2.1.1 | Ensure auditd is installed | Install auditd-lib packages"
+          package:
+            name: " {{ packages_present[5] }} "
+            state: present
+    
+    - name: "5.2.1.2 | Ensure auditing for processes that start prior to auditd is enabled"
+      block:
+        - name: "5.2.1.2 | Ensure auditing for processes that start prior to auditd is enabled | Get GRUB_CMDLINE_LINUX"
+          shell: grep 'GRUB_CMDLINE_LINUX=' /etc/default/grub | sed 's/.$//'
+          changed_when: false
+          failed_when: false
+          check_mode: false
+          register: cis_4_1_1_3_grub_cmdline_linux
+
+        - name: "5.2.1.2 | Ensure auditing for processes that start prior to auditd is enabled | Replace existing setting"
+          replace:
+            path: "{{ file }}"
+            regexp: 'audit=.'
+            replace: 'audit=1'
+          notify: grub2cfg
+
+        - name: "5.2.1.2 | Ensure auditing for processes that start prior to auditd is enabled | Add audit setting if missing"
+          lineinfile:
+              path: "{{ file }}"
+              regexp: '^GRUB_CMDLINE_LINUX='
+              line: '{{ cis_4_1_1_3_grub_cmdline_linux.stdout }} audit=1"'
+          notify: grub2cfg
+
+    - name: "5.2.1.3 | PATCH | Ensure audit_backlog_limit is sufficient"
+      block:
+        - name: "5.2.1.3 | AUDIT | Ensure audit_backlog_limit is sufficient | Get GRUB_CMDLINE_LINUX"
+          shell: grep 'GRUB_CMDLINE_LINUX=' /etc/default/grub | sed 's/.$//'
+          changed_when: false
+          failed_when: false
+          check_mode: false
+          register: cis_4_1_1_4_grub_cmdline_linux
+
+        - name: "5.2.1.3 | PATCH | Ensure audit_backlog_limit is sufficient | Replace existing setting"
+          ansible.builtin.replace:
+              path: "{{ file }}"
+              regexp: 'audit_backlog_limit=\d+'
+              replace: 'audit_backlog_limit={{ audit_back_log_limit }}'
+          notify: grub2cfg
+          when: "'audit_backlog_limit=' in cis_4_1_1_4_grub_cmdline_linux.stdout"
+
+        - name: "5.2.1.3 | PATCH | Ensure audit_backlog_limit is sufficient | Add audit_backlog_limit setting if missing"
+          ansible.builtin.lineinfile:
+              path: "{{ file }}"
+              regexp: '^GRUB_CMDLINE_LINUX='
+              line: '{{ cis_4_1_1_4_grub_cmdline_linux.stdout }} audit_backlog_limit={{ audit_back_log_limit }}"'
+          notify: grub2cfg
+          when: "'audit_backlog_limit=' not in cis_4_1_1_4_grub_cmdline_linux.stdout"
+  
+    - name: "5.2.1.4 | Ensure auditd service is enabled"
+      service:
+        name: auditd
+        state: started
+        enabled: true

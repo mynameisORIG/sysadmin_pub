@@ -1,0 +1,36 @@
+- name: "2.1 Time Synchronization"
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+    - ../../names/main.yml
+  vars:
+    file:
+      - ../../templates/chrony.conf.j2
+      - /etc/chrony.conf
+      - /etc/sysconfig/chronyd
+  tasks:
+
+    # if another method for time sync is being used, this section can be skipped
+    - name: "2.1.1 Ensure time synchronization is in use"
+      package:
+        name: "{{ packages_present[1] }}"
+        state: present
+
+    - name: "2.1.2 | Ensure chrony is configured"
+      block:
+        - name: "2.1.2 | Ensure chrony is configured | Set configuration"
+          template:
+            src: "{{ file[0] }}"
+            dest: "{{ file[1] }}"
+            owner: chrony
+            group: chrony
+            mode: 0644
+
+        - name: "2.1.2 | Ensure chrony is configured | modify /etc/sysconfig/chronyd | 1"
+          lineinfile:
+            path: "{{ file[2] }}"
+            regexp: "^(#)?OPTIONS"
+            line: "OPTIONS=\"-u chrony\""
+            create: true
+            mode: 0644

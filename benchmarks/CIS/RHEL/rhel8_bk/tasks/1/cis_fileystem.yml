@@ -1,0 +1,58 @@
+- name: Filesystem
+  become: true
+  hosts: rhel
+  vars_files: 
+    - ../../defaults/main.yml
+  handlers:
+    - import_tasks: ../../handlers/main.yml
+  tasks:
+
+  # usb-storage has been known to disable using external disk drives, mouses, and any usb activity. I recommend it to be commented out
+
+    - name: "1.1.1 | Configure Filesystem Kernel Modules"
+      block:
+      - name: Edit modprobe config
+        lineinfile:
+          path: /etc/modprobe.d/CIS.conf
+          regexp: "{{ item.regexp }}"
+          line: "{{ item.line }}"
+          create: true
+          mode: 0600
+        with_items:
+          - { regexp: "^(#)?install cramfs(\\s|$)", line: "install cramfs /bin/true" }
+          - { regexp: "^(#)?install freevxfs(\\s|$)", line: "install freevxfs /bin/true" }
+          - { regexp: "^(#)?install hfs(\\s|$)", line: "install hfs /bin/true" }
+          - { regexp: "^(#)?install hfsplus(\\s|$)", line: "install hfsplus /bin/true" }
+          - { regexp: "^(#)?install jffs2(\\s|$)", line: "install jffs2 /bin/true" }
+          - { regexp: "^(#)?install squashfs(\\s|$)", line: "install squashfs /bin/true" }
+          - { regexp: "^(#)?install udf(\\s|$)", line: "install udf /bin/true" }
+          # - { regexp: "^(#)?install usb-storage(\\s|$)", line: "install usb-storage /bin/true" }
+      - name: blacklist
+        lineinfile:
+          path: /etc/modprobe.d/blacklist.conf
+          regexp: "{{ item.regexp }}"
+          line: "{{ item.line }}"
+          create: true
+          mode: 0600
+        with_items:
+          - { regexp: "^(#)?blacklist cramfs(\\s|$)", line: "blacklist cramfs" }
+          - { regexp: "^(#)?blacklist freevxfs(\\s|$)", line: "blacklist freevxfs" }
+          - { regexp: "^(#)?blacklist hfs(\\s|$)", line: "blacklist hfs" }
+          - { regexp: "^(#)?blacklist hfsplus(\\s|$)", line: "blacklist hfsplus" }
+          - { regexp: "^(#)?blacklist jffs2(\\s|$)", line: "blacklist jffs2" }
+          - { regexp: "^(#)?blacklist udf(\\s|$)", line: "blacklist udf" }
+          - { regexp: "^(#)?blacklist squashfs(\\s|$)", line: "blacklist squashfs" }
+          # - { regexp: "^(#)?blacklist usb-storage(\\s|$)", line: "blacklist usb-storage" }
+      - name: not available
+        community.general.modprobe:
+          name: "{{ item }}"
+          state: absent
+        with_items:
+          - cramfs
+          - freevxfs
+          - hfs
+          - hfsplus
+          - jffs2
+          - udf
+          - squashfs
+          # - usb-storage
